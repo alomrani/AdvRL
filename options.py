@@ -14,7 +14,7 @@ def get_options(args=None):
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=536,
+        default=100,
         help="Number of instances per batch during training",
     )
 
@@ -45,7 +45,7 @@ def get_options(args=None):
     )
 
     parser.add_argument(
-        "--dataset_size", type=int, default=11792, help="Dataset size for training",
+        "--dataset_size", type=int, default=10000, help="Dataset size for training",
     )
     
     parser.add_argument(
@@ -133,10 +133,9 @@ def get_options(args=None):
         opts.device = "cuda"
     else:
         opts.device = "cpu"
-    if not opts.regularize:
-        opts.gamma = 0.
+
     opts.run_name = "{}_{}".format("run", time.strftime("%Y%m%dT%H%M%S"))
-    opts.save_dir = os.path.join(opts.output_dir, f"{opts.num_cars}_{opts.gamma}", opts.run_name)
+    opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
     assert (
         opts.dataset_size % opts.batch_size == 0
     ), "Epoch size must be integer multiple of batch size!"
