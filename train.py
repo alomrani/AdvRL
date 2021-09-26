@@ -61,7 +61,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./val_rewards_{opts.gamma}_{opts.num_cars}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -74,7 +74,7 @@ def train(opts):
       agent2 = mal_agent2()
       r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (r.mean(),)))}\n')
+        f.write(f'{",".join(map(str, params + (r.mean().item(),)))}\n')
       
 
   elif not opts.eval_only:
