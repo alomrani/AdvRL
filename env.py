@@ -40,9 +40,9 @@ class adv_env():
     log = 0
     batch_size = images.size(0)
     for i in range(self.time_horizon):
-      out = pixel_agent(torch.cat((self.curr_images.reshape(-1, 784), torch.ones(batch_size, 1) * (i / self.time_horizon)), dim=1))
+      out = pixel_agent(torch.cat((self.curr_images.reshape(-1, 784), torch.ones(batch_size, 1, device=images.device) * (i / self.time_horizon)), dim=1))
       selected_pixels, log_p1 = self.sample_pixels(out)
-      pertubation, log_p2 = perturb_agent.sample(torch.cat((self.curr_images.reshape(-1, 784), selected_pixels / 784., torch.ones(batch_size, 1) * (i / self.time_horizon)), dim=1))
+      pertubation, log_p2 = perturb_agent.sample(torch.cat((self.curr_images.reshape(-1, 784), selected_pixels / 784., torch.ones(batch_size, 1, device=images.device) * (i / self.time_horizon)), dim=1))
       action = torch.cat((selected_pixels, pertubation[:, None]), dim=1)
       r = self.update(action)
       R += r
