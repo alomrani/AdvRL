@@ -18,18 +18,24 @@ from options import get_options
 from torchvision import datasets, transforms
 import os
 from itertools import product
-
+import json
 
 
 def train(opts):
+  torch.manual_seed(opts.seed)
+  if not os.path.exists(opts.save_dir):
+    os.makedirs(opts.save_dir)
+    # Save arguments so exact configuration can always be found
+    with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
+        json.dump(vars(opts), f, indent=True)
   pretrained_model = "./target_model_param/lenet_mnist_model.pth"
   batch_size = opts.batch_size
   device = opts.device
-  agent = mal_agent()
-  agent2 = mal_agent2()
+  agent = mal_agent().to(device)
+  agent2 = mal_agent2().to(device)
   train_loader = torch.utils.data.DataLoader(
     datasets.MNIST(
-      './',
+      opts.output_dir,
       train=False,
       download=True,
       transform=
@@ -61,7 +67,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards.csv")
+    SCOREFILE = os.path.expanduser(opts.save_dir + "/train_rewards.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -70,8 +76,8 @@ def train(opts):
       opts.exp_beta = params[1]
       opts.lr_model = params[0]
       opts.lr_decay = params[2]
-      agent = mal_agent()
-      agent2 = mal_agent2()
+      agent = mal_agent().to(device)
+      agent2 = mal_agent2().to(device)
       r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
       with open(SCOREFILE, "a") as f:
         f.write(f'{",".join(map(str, params + (r.mean().item(),)))}\n')
@@ -79,6 +85,16 @@ def train(opts):
 
   elif not opts.eval_only:
     r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
+    plt.figure()
+    ax1, = plt.plot(np.array(r))
+    plt.xlabel("Batch")
+    plt.ylabel("Mean Reward")
+    plt.savefig(opts.save_dir + "/reward_plot.png")
+    plt.figure(2)
+    ax2, = plt.plot(np.array(acc))
+    plt.xlabel("Batch")
+    plt.ylabel("Accuracy")
+    plt.savefig(opts.save_dir + "/acc_plot.png")
 
 
 
@@ -88,6 +104,7 @@ def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline,
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
+    y = y.to(device)
     env = adv_env(target_model, time_horizon)
     r, log_p = env.deploy((agent, agent2), x)
     # print(f"Mean Reward: {-r.mean()}")
@@ -99,7 +116,7 @@ def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline,
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
-    acc.append(accuracy)
+    acc.append(accuracy.item())
     optimizers[0].zero_grad()
     optimizers[1].zero_grad()
     loss = ((r - baseline.eval(r)) * log_p).mean()
