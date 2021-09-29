@@ -108,10 +108,18 @@ def train(opts):
     agent2.load_state_dict(agent2_param)
     agent1.eval()
     agent2.eval()
-    r, acc, adv_image = eval(agent1, agent2, target_model, train_loader, opts.time_horizon, device)
+    r, acc, adv_images, orig_images = eval(agent1, agent2, target_model, train_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
-    plt.imsave(opts.save_dir + 'adv_image.png', np.array(adv_image))
+    plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
+    plt.imsave(opts.save_dir + '/orig_image.png', np.array(orig_images[-1]), cmap='gray')
+    plt.imsave(opts.save_dir + '/adv_image1.png', np.array(adv_images[-2]), cmap='gray')
+    plt.imsave(opts.save_dir + '/orig_image1.png', np.array(orig_images[-2]), cmap='gray')
+    plt.imsave(opts.save_dir + '/adv_image2.png', np.array(adv_images[0]), cmap='gray')
+    plt.imsave(opts.save_dir + '/orig_image2.png', np.array(orig_images[0]), cmap='gray')
+    plt.imsave(opts.save_dir + '/adv_image3.png', np.array(adv_images[50]), cmap='gray')
+    plt.imsave(opts.save_dir + '/orig_image3.png', np.array(orig_images[50]), cmap='gray')
+
 
 
 def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline, time_horizon, device, opts):
@@ -121,8 +129,8 @@ def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline,
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
-    env = adv_env(target_model, time_horizon, opts.epsilon)
-    r, log_p = env.deploy((agent, agent2), x)
+    env = adv_env(target_model, opts)
+    log_p = env.deploy((agent, agent2), x)
     # print(f"Mean Reward: {-r.mean()}")
     out = target_model(env.curr_images.unsqueeze(1)).detach()
     target_model_loss = loss_fun(out, y)
@@ -182,15 +190,15 @@ def train_epoch(agent, agent2, target_model, train_loader, opts):
   return rewards, accuracies
 
 
-def eval(agent, agent2, target_model, train_loader, time_horizon, device):
+def eval(agent, agent2, target_model, train_loader, time_horizon, device, opts):
   loss_fun = nn.CrossEntropyLoss(reduce=False)
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
-    env = adv_env(target_model, time_horizon)
-    r, log_p = env.deploy((agent, agent2), x)
+    env = adv_env(target_model, opts)
+    log_p = env.deploy((agent, agent2), x)
     # print(f"Mean Reward: {-r.mean()}")
     out = target_model(env.curr_images.unsqueeze(1)).detach()
     target_model_loss = loss_fun(out, y)
@@ -201,7 +209,7 @@ def eval(agent, agent2, target_model, train_loader, time_horizon, device):
     print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(accuracy.item())
-  return torch.tensor(rewards), torch.tensor(acc), env.curr_images[-1]
+  return torch.tensor(rewards), torch.tensor(acc), env.curr_images, env.images
 
 if __name__ == "__main__":
   train(get_options())
