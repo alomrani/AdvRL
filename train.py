@@ -95,7 +95,20 @@ def train(opts):
     plt.xlabel("Batch")
     plt.ylabel("Accuracy")
     plt.savefig(opts.save_dir + "/acc_plot.png")
+  elif opts.eval_only:
+    agent1_param = torch.load(opts.load_path, map_location=opts.device)
+    agent2_param = torch.load(opts.load_path2, map_location=opts.device)
+    agent1 = mal_agent().to(device)
+    agent2 = mal_agent2().to(device)
 
+    agent1.load_state_dict(agent1_param)
+    agent2.load_state_dict(agent2_param)
+    agent1.eval()
+    agent2.eval()
+    r, acc, adv_image = eval(agent1, agent2, target_model, train_loader, opts.time_horizon, device)
+    print(r.mean().item())
+    print(acc.mean().item())
+    plt.imsave(opts.save_dir + 'adv_image.png', np.array(adv_image))
 
 
 def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline, time_horizon, device):
@@ -162,6 +175,28 @@ def train_epoch(agent, agent2, target_model, train_loader, opts):
       accuracies = torch.cat((accuracies, torch.tensor(acc)))
 
   return rewards, accuracies
+
+
+def eval(agent, agent2, target_model, train_loader, time_horizon, device):
+  loss_fun = nn.CrossEntropyLoss(reduce=False)
+  rewards = []
+  acc = []
+  for i, (x, y) in enumerate(tqdm(train_loader)):
+    x = x.to(torch.device(device)).squeeze(1)
+    y = y.to(device)
+    env = adv_env(target_model, time_horizon)
+    r, log_p = env.deploy((agent, agent2), x)
+    # print(f"Mean Reward: {-r.mean()}")
+    out = target_model(env.curr_images.unsqueeze(1)).detach()
+    target_model_loss = loss_fun(out, y)
+    print(f"Target Model Loss: {target_model_loss.mean()}")
+    r = -target_model_loss
+    # print(torch.softmax(out, dim=1))
+    accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
+    print(f"Target Model Accuracy: {accuracy}")
+    rewards.append(-r.mean().item())
+    acc.append(accuracy.item())
+  return torch.tensor(rewards), torch.tensor(acc), env.curr_images[-1]
 
 if __name__ == "__main__":
   train(get_options())
