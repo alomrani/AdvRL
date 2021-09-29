@@ -60,6 +60,9 @@ def get_options(args=None):
         default=48,
         help="Number of timesteps in charging simulation",
     )
+    parser.add_argument(
+        "--epsilon", type=float, default=0.15, help="Learning rate decay per epoch"
+    )
 
     # Training
     parser.add_argument(
