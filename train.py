@@ -67,7 +67,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(opts.save_dir + "/train_rewards.csv")
+    SCOREFILE = os.path.expanduser("./train_rewards.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -80,7 +80,7 @@ def train(opts):
       agent2 = mal_agent2().to(device)
       r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (r.mean().item(),)))}\n')
+        f.write(f'{",".join(map(str, params + (r[-1],)))}\n')
       
 
   elif not opts.eval_only:
@@ -95,6 +95,9 @@ def train(opts):
     plt.xlabel("Batch")
     plt.ylabel("Accuracy")
     plt.savefig(opts.save_dir + "/acc_plot.png")
+    torch.save(agent.state_dict(), opts.save_dir + "/pixel_agent.pt")
+    torch.save(agent2.state_dict(), opts.save_dir + "/perturb_agent.pt")
+
   elif opts.eval_only:
     agent1_param = torch.load(opts.load_path, map_location=opts.device)
     agent2_param = torch.load(opts.load_path2, map_location=opts.device)
@@ -111,23 +114,23 @@ def train(opts):
     plt.imsave(opts.save_dir + 'adv_image.png', np.array(adv_image))
 
 
-def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline, time_horizon, device):
+def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline, time_horizon, device, opts):
   loss_fun = nn.CrossEntropyLoss(reduce=False)
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
-    env = adv_env(target_model, time_horizon)
+    env = adv_env(target_model, time_horizon, opts.epsilon)
     r, log_p = env.deploy((agent, agent2), x)
     # print(f"Mean Reward: {-r.mean()}")
     out = target_model(env.curr_images.unsqueeze(1)).detach()
     target_model_loss = loss_fun(out, y)
-    print(f"Target Model Loss: {target_model_loss.mean()}")
+    # print(f"Target Model Loss: {target_model_loss.mean()}")
     r = -target_model_loss
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
-    print(f"Target Model Accuracy: {accuracy}")
+    # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(accuracy.item())
     optimizers[0].zero_grad()
@@ -138,6 +141,8 @@ def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline,
     loss.backward()
     optimizers[0].step()
     optimizers[1].step()
+  print(f"Target Model Loss: {np.array(rewards).mean()}")
+  print(f"Target Model Accuracy: {np.array(acc).mean()}")
   return np.array(rewards), np.array(acc)
 
 def train_epoch(agent, agent2, target_model, train_loader, opts):
@@ -164,7 +169,7 @@ def train_epoch(agent, agent2, target_model, train_loader, opts):
   rewards = []
   accuracies = []
   for epoch in range(n_epochs):
-    r, acc = train_batch(agent, agent2, target_model, train_loader, [optimizer, optimizer2], baseline, time_horizon, device)
+    r, acc = train_batch(agent, agent2, target_model, train_loader, [optimizer, optimizer2], baseline, time_horizon, device, opts)
     lr_scheduler.step()
     lr_scheduler2.step()
     if epoch == 0:

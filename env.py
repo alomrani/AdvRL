@@ -4,17 +4,18 @@ import numpy as np
 
 class adv_env():
 
-  def __init__(self, target_model, time_horizon):
+  def __init__(self, target_model, time_horizon, epsilon):
     self.images = None
     self.curr_images = None
     self.reward = None
     entropy = None
+    self.epsilon = epsilon
     self.prev_ent = None
     self.target_model = target_model
     self.time_horizon = time_horizon
   def update(self, action):
     action_update = F.one_hot(action[:, 0].long(), num_classes=784).reshape(-1, 28, 28)
-    self.curr_images = self.curr_images + action_update * action[:, 1][:, None, None]
+    self.curr_images = self.curr_images + action_update * torch.clip(action[:, 1][:, None, None], -self.epsilon, self.epsilon)
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     new_ent = self.calc_entropy(self.curr_images)
     self.reward = (new_ent - self.prev_ent).detach()
