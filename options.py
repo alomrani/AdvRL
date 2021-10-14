@@ -17,11 +17,17 @@ def get_options(args=None):
         default=100,
         help="Number of instances per batch during training",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="combined_mal",
+        help="Type of adversarial agent to train/test",
+    )
 
     parser.add_argument(
         "--val_size",
         type=float,
-        default=1072.,
+        default=1000.,
         help="Number of instances used for reporting validation performance",
     )
 
@@ -85,6 +91,12 @@ def get_options(args=None):
         type=float,
         default=0.7,
         help="Exponential moving average baseline decay (default 0.8)",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.0,
+        help="hyperparameter to control perturbation",
     )
 
     parser.add_argument(

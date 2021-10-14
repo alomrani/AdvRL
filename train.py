@@ -3,14 +3,12 @@ import torch
 from collections import OrderedDict
 import torch.utils.model_zoo as model_zoo
 from torch.optim import Adam
-from torch.utils.data import Dataset, DataLoader
+from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
-import torch.optim as optim
-from perturb_agent import mal_agent2
-from pixel_agent import mal_agent
+from utils import init_adv_agents, save_agents_param
 from target_model import Net
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
@@ -31,9 +29,8 @@ def train(opts):
   pretrained_model = "./target_model_param/lenet_mnist_model.pth"
   batch_size = opts.batch_size
   device = opts.device
-  agent = mal_agent().to(device)
-  agent2 = mal_agent2().to(device)
-  train_loader = torch.utils.data.DataLoader(
+  agents = init_adv_agents(opts)
+  train_loader = DataLoader(
     datasets.MNIST(
       opts.output_dir,
       train=False,
@@ -76,16 +73,15 @@ def train(opts):
       opts.exp_beta = params[1]
       opts.lr_model = params[0]
       opts.lr_decay = params[2]
-      agent = mal_agent().to(device)
-      agent2 = mal_agent2().to(device)
-      r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
-      eval_r = eval(agent1, agent2, target_model, train_loader, opts.num_timesteps, device, opts)
+      agents = init_adv_agents(opts)
+      r, acc = train_epoch(agents, target_model, train_loader, opts)
+      eval_r, *_ = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
         f.write(f'{",".join(map(str, params + (r[-1].item(),)))}\n')
-      
+
 
   elif not opts.eval_only:
-    r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
+    r, acc = train_epoch(agents, target_model, train_loader, opts)
     plt.figure()
     ax1, = plt.plot(np.array(r))
     plt.xlabel("Batch")
@@ -96,20 +92,11 @@ def train(opts):
     plt.xlabel("Batch")
     plt.ylabel("Accuracy")
     plt.savefig(opts.save_dir + "/acc_plot.png")
-    torch.save(agent.state_dict(), opts.save_dir + "/pixel_agent.pt")
-    torch.save(agent2.state_dict(), opts.save_dir + "/perturb_agent.pt")
+    save_agents_param(agents)
 
   elif opts.eval_only:
-    agent1_param = torch.load(opts.load_path, map_location=opts.device)
-    agent2_param = torch.load(opts.load_path2, map_location=opts.device)
-    agent1 = mal_agent().to(device)
-    agent2 = mal_agent2().to(device)
-
-    agent1.load_state_dict(agent1_param)
-    agent2.load_state_dict(agent2_param)
-    agent1.eval()
-    agent2.eval()
-    r, acc, adv_images, orig_images = eval(agent1, agent2, target_model, train_loader, opts.num_timesteps, device, opts)
+    agents = init_adv_agents(opts, opts.load_paths)
+    r, acc, adv_images, orig_images = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -123,40 +110,41 @@ def train(opts):
 
 
 
-def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline, time_horizon, device, opts):
-  loss_fun = nn.CrossEntropyLoss(reduce=False)
+def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
+  loss_fun = nn.CrossEntropyLoss(reduction='none')
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    x = x.to(torch.device(device)).squeeze(1)
-    y = y.to(device)
+    x = x.to(torch.device(opts.device)).squeeze(1)
+    y = y.to(opts.device)
     env = adv_env(target_model, opts)
-    log_p = env.deploy((agent, agent2), x)
+    log_p, total_perturbs = env.deploy(agents, x)
     # print(f"Mean Reward: {-r.mean()}")
-    out = target_model(env.curr_images.unsqueeze(1)).detach()
-    out2 = target_model(env.images.unsqueeze(1)).detach()
-    target_model_loss = loss_fun(out, y)
-    target_model_loss2 = loss_fun(out2, y)
+    with torch.no_grad():
+      out = target_model(env.curr_images.unsqueeze(1))
+      out2 = target_model(env.images.unsqueeze(1))
+      target_model_loss = loss_fun(out, y)
+      target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -(target_model_loss - target_model_loss2)
+    r = -(target_model_loss - target_model_loss2) + opts.gamma * torch.abs(total_perturbs)
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(accuracy.item())
-    optimizers[0].zero_grad()
-    optimizers[1].zero_grad()
+    for optimizer in optimizers:
+      optimizer.zero_grad()
     loss = ((r - baseline.eval(r)) * log_p).mean()
     # loss_log.append(loss.item())
     # average_reward.append(-r.mean().item())
     loss.backward()
-    optimizers[0].step()
-    optimizers[1].step()
+    for optimizer in optimizers:
+      optimizer.step()
   print(f"Target Model Loss: {np.array(rewards).mean()}")
   print(f"Target Model Accuracy: {np.array(acc).mean()}")
   return np.array(rewards), np.array(acc)
 
-def train_epoch(agent, agent2, target_model, train_loader, opts):
+def train_epoch(agents, target_model, train_loader, opts):
   beta = opts.exp_beta
   lr_model = opts.lr_model
   lr_decay= opts.lr_decay
@@ -164,25 +152,19 @@ def train_epoch(agent, agent2, target_model, train_loader, opts):
   time_horizon = opts.num_timesteps
   batch_size = opts.batch_size
   device = opts.device
-  optimizer = Adam(agent.parameters(), lr=lr_model)
-  optimizer2 = Adam(agent2.parameters(), lr=lr_model)
+  optimizers = [Adam(agent.parameters(), lr=lr_model) for agent in agents]
 
-  lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-    optimizer, lambda epoch: lr_decay ** epoch
-  )
-  lr_scheduler2 = torch.optim.lr_scheduler.LambdaLR(
-    optimizer2, lambda epoch: lr_decay ** epoch
-  )
+  lr_schedulers = [LambdaLR(optimizer, lambda epoch: lr_decay ** epoch) for optimizer in optimizers]
 
-  agent.train()
-  agent2.train()
+  for agent in agents:
+    agent.train()
   baseline = ExponentialBaseline(beta)
   rewards = []
   accuracies = []
   for epoch in range(n_epochs):
-    r, acc = train_batch(agent, agent2, target_model, train_loader, [optimizer, optimizer2], baseline, time_horizon, device, opts)
-    lr_scheduler.step()
-    lr_scheduler2.step()
+    r, acc = train_batch(agents, target_model, train_loader, optimizers, baseline, opts)
+    for lr_scheduler in lr_schedulers:
+      lr_scheduler.step()
     if epoch == 0:
       rewards = torch.tensor(r)
       accuracies = torch.tensor(acc)
@@ -193,8 +175,8 @@ def train_epoch(agent, agent2, target_model, train_loader, opts):
   return rewards, accuracies
 
 
-def eval(agent, agent2, target_model, train_loader, time_horizon, device, opts):
-  loss_fun = nn.CrossEntropyLoss(reduce=False)
+def eval(agents, target_model, train_loader, time_horizon, device, opts):
+  loss_fun = nn.CrossEntropyLoss(reduction='none')
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
@@ -202,7 +184,7 @@ def eval(agent, agent2, target_model, train_loader, time_horizon, device, opts):
     y = y.to(device)
     env = adv_env(target_model, opts)
     with torch.no_grad():
-        log_p = env.deploy((agent, agent2), x)
+        env.deploy(agents, x)
         out = target_model(env.curr_images.unsqueeze(1))
     target_model_loss = loss_fun(out, y)
     print(f"Target Model Loss: {target_model_loss.mean()}")
@@ -213,6 +195,8 @@ def eval(agent, agent2, target_model, train_loader, time_horizon, device, opts):
     rewards.append(-r.mean().item())
     acc.append(accuracy.item())
   return torch.tensor(rewards), torch.tensor(acc), env.curr_images, env.images
+
+
 
 if __name__ == "__main__":
   train(get_options())
