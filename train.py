@@ -67,7 +67,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser("./train_rewards.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_with_masking_{opts.epsilon}_{opts.num_timesteps}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -79,8 +79,9 @@ def train(opts):
       agent = mal_agent().to(device)
       agent2 = mal_agent2().to(device)
       r, acc = train_epoch(agent, agent2, target_model, train_loader, opts)
+      eval_r = eval(agent1, agent2, target_model, train_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (r[-1],)))}\n')
+        f.write(f'{",".join(map(str, params + (r[-1].item(),)))}\n')
       
 
   elif not opts.eval_only:
@@ -133,9 +134,11 @@ def train_batch(agent, agent2, target_model, train_loader, optimizers, baseline,
     log_p = env.deploy((agent, agent2), x)
     # print(f"Mean Reward: {-r.mean()}")
     out = target_model(env.curr_images.unsqueeze(1)).detach()
+    out2 = target_model(env.images.unsqueeze(1)).detach()
     target_model_loss = loss_fun(out, y)
+    target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -target_model_loss
+    r = -(target_model_loss - target_model_loss2)
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
@@ -198,9 +201,9 @@ def eval(agent, agent2, target_model, train_loader, time_horizon, device, opts):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
     env = adv_env(target_model, opts)
-    log_p = env.deploy((agent, agent2), x)
-    # print(f"Mean Reward: {-r.mean()}")
-    out = target_model(env.curr_images.unsqueeze(1)).detach()
+    with torch.no_grad():
+        log_p = env.deploy((agent, agent2), x)
+        out = target_model(env.curr_images.unsqueeze(1))
     target_model_loss = loss_fun(out, y)
     print(f"Target Model Loss: {target_model_loss.mean()}")
     r = -target_model_loss
