@@ -64,7 +64,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_with_masking_{opts.epsilon}_{opts.num_timesteps}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_with_masking_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -75,9 +75,9 @@ def train(opts):
       opts.lr_decay = params[2]
       agents = init_adv_agents(opts)
       r, acc = train_epoch(agents, target_model, train_loader, opts)
-      eval_r, *_ = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
+      eval_r, eval_loss, eval_acc, *_ = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (r[-1].item(),)))}\n')
+        f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
 
   elif not opts.eval_only:
@@ -92,8 +92,7 @@ def train(opts):
     plt.xlabel("Batch")
     plt.ylabel("Accuracy")
     plt.savefig(opts.save_dir + "/acc_plot.png")
-    save_agents_param(agents)
-
+    save_agents_param(agents, opts)
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
     r, acc, adv_images, orig_images = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
@@ -126,7 +125,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -(target_model_loss - target_model_loss2) + opts.gamma * torch.abs(total_perturbs)
+    r = -(target_model_loss - target_model_loss2) + opts.gamma * torch.sqrt(total_perturbs)
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
@@ -179,22 +178,26 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   loss_fun = nn.CrossEntropyLoss(reduction='none')
   rewards = []
   acc = []
+  losses = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
     env = adv_env(target_model, opts)
     with torch.no_grad():
-        env.deploy(agents, x)
+        log_p, total_perturbs = env.deploy(agents, x)
         out = target_model(env.curr_images.unsqueeze(1))
+        out1 = target_model(env.images.unsqueeze(1))
     target_model_loss = loss_fun(out, y)
-    print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -target_model_loss
+    target_model_loss1 = loss_fun(out1, y)
+    #print(f"Target Model Loss: {target_model_loss.mean()}")
+    r = -(target_model_loss - target_model_loss1) + opts.gamma * (torch.sqrt(total_perturbs))
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
-    print(f"Target Model Accuracy: {accuracy}")
+    # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(accuracy.item())
-  return torch.tensor(rewards), torch.tensor(acc), env.curr_images, env.images
+    losses.append(target_model_loss.mean().item())
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, env.images
 
 
 
