@@ -31,7 +31,7 @@ class adv_env():
       action = torch.cat((selected_pixels, perturb_val[:, None]), dim=1)
       self.update(action)
       log += lp_pixel.squeeze(1) + lp_perturb
-      total_perturbs += perturb_val
+      total_perturbs += torch.abs(perturb_val)
     # plt.imshow(torch.cat((self.curr_images[0, :, :], self.images[0, :, :]), dim=1))
     # plt.show()
 

@@ -115,6 +115,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
+    if i > 1:
+      break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
