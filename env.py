@@ -31,7 +31,7 @@ class adv_env():
       action = torch.cat((selected_pixels, perturb_val[:, None]), dim=1)
       self.update(action)
       log += lp_pixel.squeeze(1) + lp_perturb
-      total_perturbs += torch.abs(perturb_val)
+      total_perturbs += perturb_val ** 2
     # plt.imshow(torch.cat((self.curr_images[0, :, :], self.images[0, :, :]), dim=1))
     # plt.show()
 
@@ -45,6 +45,7 @@ class adv_env():
       out = pixel_agent(
         torch.cat(
           (
+            self.images.reshape(-1, 784),
             self.curr_images.reshape(-1, 784),
             self.mask,
             torch.ones(batch_size, 1, device=self.device) * (timestep / self.time_horizon)),
@@ -55,6 +56,7 @@ class adv_env():
       perturb_val, lp_perturb = perturb_agent.sample(
         torch.cat(
           (
+            self.images.reshape(-1, 784),
             self.curr_images.reshape(-1, 784),
             selected_pixels / 784.,
             torch.ones(batch_size, 1, device=self.device) * (timestep / self.time_horizon))
@@ -63,7 +65,7 @@ class adv_env():
       )
     else:
       mal_agent = agents[0]
-      perturb_val, lp_perturb, out_pixel = mal_agent.sample(self.curr_images, timestep / self.time_horizon, self.mask)
+      perturb_val, lp_perturb, out_pixel = mal_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
       selected_pixels, lp_pixel = self.sample_pixels(out_pixel, self.mask)
 
     return selected_pixels, perturb_val, lp_pixel, lp_perturb
