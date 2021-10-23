@@ -13,10 +13,11 @@ class adv_env():
     self.target_model = target_model
     self.time_horizon = opts.num_timesteps
     self.device = None
-  def update(self, action):
-    self.mask = torch.scatter(self.mask, -1, action[:, 0].unsqueeze(1).long(), 1)
-    action_update = F.one_hot(action[:, 0].long(), num_classes=784).reshape(-1, 28, 28)
-    self.curr_images = self.curr_images + action_update * torch.clip(action[:, 1][:, None, None], -self.epsilon, self.epsilon)
+    self.opts = opts
+    self.sample_type = "sample"
+  def update(self, selected_pixels, perturb_val):
+    self.mask = (self.mask + selected_pixels.reshape(-1, 784) > 0).long()
+    self.curr_images = self.curr_images + selected_pixels * torch.clip(perturb_val[:, None, None], -self.epsilon, self.epsilon)
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     return
 
@@ -25,17 +26,14 @@ class adv_env():
     self.images = images
     log = 0
     self.device = images.device
-    total_perturbs = 0
     for i in range(self.time_horizon):
       selected_pixels, perturb_val, lp_pixel, lp_perturb = self.call_agents(agents, i)
-      action = torch.cat((selected_pixels, perturb_val[:, None]), dim=1)
-      self.update(action)
-      log += lp_pixel.squeeze(1) + lp_perturb
-      total_perturbs += perturb_val ** 2
+      self.update(selected_pixels, perturb_val)
+      log += lp_pixel + lp_perturb
     # plt.imshow(torch.cat((self.curr_images[0, :, :], self.images[0, :, :]), dim=1))
     # plt.show()
 
-    return log, total_perturbs
+    return log
 
   def call_agents(self, agents, timestep):
     batch_size = self.images.size(0)
@@ -66,13 +64,27 @@ class adv_env():
     else:
       mal_agent = agents[0]
       perturb_val, lp_perturb, out_pixel = mal_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
-      selected_pixels, lp_pixel = self.sample_pixels(out_pixel, self.mask)
-
+      selected_pixels, lp_pixel = self.get_selected_pixels(out_pixel, self.mask)
     return selected_pixels, perturb_val, lp_pixel, lp_perturb
 
 
-  def sample_pixels(self, logits, mask):
-    logits[mask.bool()] = -1e6
-    l_p = torch.log_softmax(logits, dim=1)
-    selected = l_p.exp().multinomial(1)
-    return selected, l_p.gather(1, selected)
+  def get_selected_pixels(self, logits, mask):
+    if self.opts.mask:
+      logits[mask.bool()] = -1e6
+    if self.opts.mode == "one-pixel":
+      l_p = torch.log_softmax(logits, dim=1)
+      selected = self.sample(l_p.exp())
+      one_hot_selected = F.one_hot(selected.long(), num_classes=784).reshape(-1, 28, 28)
+      return one_hot_selected, l_p.gather(1, selected).squeeze(1)
+    else:
+      probs = torch.sigmoid(logits)[:, :, None]
+      probs = torch.cat((probs, 1. - probs), dim=-1)
+      selected = self.sample(probs.reshape(-1, 2)).reshape(-1, 28, 28)
+      return selected, (probs.gather(-1, selected) + 1e-6).log().sum((-1, -2))
+
+  def sample(self, prob):
+    if self.sample_type == "sample":
+      selected = prob.multinomial(num_samples=1)
+    else:
+      selected = prob.argmax(-1)
+    return selected

@@ -18,6 +18,17 @@ def get_options(args=None):
         help="Number of instances per batch during training",
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        default="multi-pixel",
+        help="attack mode: multi-pixel or one-pixel at a time",
+    )
+    parser.add_argument(
+        "--mask",
+        action="store_true",
+        help="mask previously perturbed pixels"
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default="combined_mal",

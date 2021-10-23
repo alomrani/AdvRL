@@ -114,12 +114,10 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    if i > 1:
-      break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
-    log_p, total_perturbs = env.deploy(agents, x)
+    log_p = env.deploy(agents, x)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
@@ -127,7 +125,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -(target_model_loss - target_model_loss2) + opts.gamma * torch.sqrt(total_perturbs)
+    l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
+    r = -(target_model_loss - target_model_loss2) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
@@ -185,14 +184,16 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
     env = adv_env(target_model, opts)
+    env.sample_type = "greedy"
     with torch.no_grad():
-        log_p, total_perturbs = env.deploy(agents, x)
+        env.deploy(agents, x)
         out = target_model(env.curr_images.unsqueeze(1))
         out1 = target_model(env.images.unsqueeze(1))
     target_model_loss = loss_fun(out, y)
     target_model_loss1 = loss_fun(out1, y)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
-    r = -(target_model_loss - target_model_loss1) + opts.gamma * (torch.sqrt(total_perturbs))
+    l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
+    r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
     accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
