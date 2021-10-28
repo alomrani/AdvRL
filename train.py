@@ -178,7 +178,7 @@ def train_epoch(agents, target_model, train_loader, opts):
 
 
 def eval(agents, target_model, train_loader, time_horizon, device, opts):
-  loss_fun = nn.CrossEntropyLoss(reduction='none')
+  loss_fun = carlini_loss
   rewards = []
   acc = []
   losses = []
@@ -191,16 +191,16 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
         env.deploy(agents, x)
         out = target_model(env.curr_images.unsqueeze(1))
         out1 = target_model(env.images.unsqueeze(1))
+        attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
     target_model_loss = loss_fun(out, y)
     target_model_loss1 = loss_fun(out1, y)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
     r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
-    accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
-    acc.append(accuracy.item())
+    acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
   return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, env.images
 
