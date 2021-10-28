@@ -188,7 +188,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     env = adv_env(target_model, opts)
     env.sample_type = "greedy"
     with torch.no_grad():
-        env.deploy(agents, x)
+        env.deploy(agents, x, y)
         out = target_model(env.curr_images.unsqueeze(1))
         out1 = target_model(env.images.unsqueeze(1))
         attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
