@@ -1,7 +1,8 @@
 import torch
+from torch.autograd import grad
 import torch.nn.functional as F
 import numpy as np
-
+from utils import carlini_loss
 
 class adv_env():
 
@@ -15,21 +16,31 @@ class adv_env():
     self.device = None
     self.opts = opts
     self.sample_type = "sample"
-  def update(self, selected_pixels, perturb_val):
+    self.delta = opts.delta
+  def update(self, selected_pixels):
     self.mask = (self.mask + selected_pixels.reshape(-1, 784) > 0).long()
-    self.curr_images = self.curr_images + selected_pixels * torch.clip(perturb_val[:, None, None], -self.epsilon, self.epsilon)
+    with torch.no_grad():
+      x_right = torch.log_softmax(self.target_model(torch.clip(self.images.unsqueeze(1) + selected_pixels.unsqueeze(1) * self.delta, min=0., max=1.)), dim=1)
+      x_left = torch.log_softmax(self.target_model(torch.clip(self.images.unsqueeze(1) - selected_pixels.unsqueeze(1) * self.delta, min=0., max=1.)), dim=1)
+
+    loss_right = carlini_loss(x_right, self.targets)
+    loss_left = carlini_loss(x_left, self.targets)
+
+    grad_estimate = (loss_right - loss_left) / (2 * self.delta)
+    self.curr_images = self.curr_images + selected_pixels * torch.sign(grad_estimate).unsqueeze(-1) * self.epsilon
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     return
 
-  def deploy(self, agents, images):
+  def deploy(self, agents, images, true_targets):
     self.curr_images = images.clone()
+    self.targets = true_targets
     self.images = images
     log = 0
     self.device = images.device
     for i in range(self.time_horizon):
-      selected_pixels, perturb_val, lp_pixel, lp_perturb = self.call_agents(agents, i)
-      self.update(selected_pixels, perturb_val)
-      log += lp_pixel + lp_perturb
+      selected_pixels, lp_pixel = self.call_agents(agents, i)
+      self.update(selected_pixels)
+      log += lp_pixel
     # plt.imshow(torch.cat((self.curr_images[0, :, :], self.images[0, :, :]), dim=1))
     # plt.show()
 
@@ -51,21 +62,21 @@ class adv_env():
           dim=1
       )
       selected_pixels, lp_pixel = self.sample_pixels(out, self.mask)
-      perturb_val, lp_perturb = perturb_agent.sample(
-        torch.cat(
-          (
-            self.images.reshape(-1, 784),
-            self.curr_images.reshape(-1, 784),
-            selected_pixels / 784.,
-            torch.ones(batch_size, 1, device=self.device) * (timestep / self.time_horizon))
-          ),
-          dim=1
-      )
+      # perturb_val, lp_perturb = perturb_agent.sample(
+      #   torch.cat(
+      #     (
+      #       self.images.reshape(-1, 784),
+      #       self.curr_images.reshape(-1, 784),
+      #       selected_pixels / 784.,
+      #       torch.ones(batch_size, 1, device=self.device) * (timestep / self.time_horizon))
+      #     ),
+      #     dim=1
+      # )
     else:
       mal_agent = agents[0]
-      perturb_val, lp_perturb, out_pixel = mal_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
+      out_pixel = mal_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
       selected_pixels, lp_pixel = self.get_selected_pixels(out_pixel, self.mask)
-    return selected_pixels, perturb_val, lp_pixel, lp_perturb
+    return selected_pixels, lp_pixel
 
 
   def get_selected_pixels(self, logits, mask):
@@ -78,7 +89,7 @@ class adv_env():
       return one_hot_selected, l_p.gather(1, selected).squeeze(1)
     else:
       probs = torch.sigmoid(logits)[:, :, None]
-      probs = torch.cat((probs, 1. - probs), dim=-1)
+      probs = torch.cat((1. - probs, probs), dim=-1)
       selected = self.sample(probs.reshape(-1, 2)).reshape(-1, 28, 28)
       return selected, (probs.gather(-1, selected) + 1e-6).log().sum((-1, -2))
 

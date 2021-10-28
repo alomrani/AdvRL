@@ -21,7 +21,7 @@ def get_options(args=None):
         "--mode",
         type=str,
         default="multi-pixel",
-        help="attack mode: multi-pixel or one-pixel at a time",
+        help="attack mode: multi-pixel or one-pixel",
     )
     parser.add_argument(
         "--mask",
@@ -81,15 +81,19 @@ def get_options(args=None):
         "--epsilon", type=float, default=0.15, help="Learning rate decay per epoch"
     )
 
+    parser.add_argument(
+        "--delta", type=float, default=0.001, help="Learning rate decay per epoch"
+    )
+
     # Training
     parser.add_argument(
         "--lr_model",
         type=float,
-        default=0.0004,
+        default=0.001,
         help="Set the learning rate for the actor network",
     )
     parser.add_argument(
-        "--lr_decay", type=float, default=0.99, help="Learning rate decay per epoch"
+        "--lr_decay", type=float, default=1.0, help="Learning rate decay per epoch"
     )
 
     parser.add_argument(

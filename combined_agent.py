@@ -12,7 +12,7 @@ class mal_combined_agent(nn.Module):
     self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
     # self.conv2_drop = nn.Dropout2d()
     self.fc1 = nn.Linear(321, 500)
-    self.fc2 = nn.Linear(500, 786)
+    self.fc2 = nn.Linear(500, 784)
 
   def forward(self, images, timestep):
     x = F.relu(F.max_pool2d(self.conv1(images), 2))
@@ -32,9 +32,9 @@ class mal_combined_agent(nn.Module):
         dim=1
     )
     out = self.forward(state, timestep)
-    mu, sigma = out[:, -2], torch.abs(out[:, -1].clone()) + 1e-5
-    n = torch.distributions.Normal(mu.detach(), sigma.detach())
-    a = n.rsample().detach()
-    p = torch.exp(-0.5 *((a - mu) / (sigma))**2) * 1 / (sigma * np.sqrt(2 * np.pi))
-    lp = torch.log(p + 1e-5)
-    return a, lp, out[:, :-2]
+    # mu, sigma = out[:, -2], torch.abs(out[:, -1].clone()) + 1e-5
+    # n = torch.distributions.Normal(mu.detach(), sigma.detach())
+    # a = n.rsample().detach()
+    # p = torch.exp(-0.5 *((a - mu) / (sigma))**2) * 1 / (sigma * np.sqrt(2 * np.pi))
+    # lp = torch.log(p + 1e-5)
+    return out

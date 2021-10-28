@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import init_adv_agents, save_agents_param
+from utils import carlini_loss, init_adv_agents, save_agents_param
 from target_model import Net
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
@@ -40,7 +40,7 @@ def train(opts):
           transforms.ToTensor(),
         ])),
       batch_size=batch_size,
-      shuffle=True
+      # shuffle=True
   )
 
   # Initialize the network
@@ -110,28 +110,30 @@ def train(opts):
 
 
 def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
-  loss_fun = nn.CrossEntropyLoss(reduction='none')
+  loss_fun = carlini_loss
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
+    if i > 10:
+      break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
-    log_p = env.deploy(agents, x)
+    log_p = env.deploy(agents, x, y)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
       out2 = target_model(env.images.unsqueeze(1))
+      attack_accuracy = torch.abs((out2.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
     r = -(target_model_loss - target_model_loss2) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
-    accuracy = (out.argmax(1) == y).float().sum() / x.size(0)
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
-    acc.append(accuracy.item())
+    acc.append(attack_accuracy.item())
     for optimizer in optimizers:
       optimizer.zero_grad()
     loss = ((r - baseline.eval(r)) * log_p).mean()
@@ -141,7 +143,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     for optimizer in optimizers:
       optimizer.step()
   print(f"Target Model Loss: {np.array(rewards).mean()}")
-  print(f"Target Model Accuracy: {np.array(acc).mean()}")
+  print(f"Attack Accuracy: {np.array(acc).mean()}")
   return np.array(rewards), np.array(acc)
 
 def train_epoch(agents, target_model, train_loader, opts):

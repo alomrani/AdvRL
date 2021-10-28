@@ -2,6 +2,7 @@ from perturb_agent import mal_agent2
 from pixel_agent import mal_agent
 from combined_agent import mal_combined_agent
 import torch
+import torch.nn.functional as F
 
 
 def init_adv_agents(opts, agents_param_paths=[]):
@@ -21,3 +22,11 @@ def init_adv_agents(opts, agents_param_paths=[]):
 def save_agents_param(agents, opts):
   for i, agent in enumerate(agents):
     torch.save(agent.state_dict(), opts.save_dir + f"/agent_{i}.pt")
+
+def carlini_loss(output, targets):
+  one_hot_targets = F.one_hot(targets.long(), num_classes=10)
+  logit_loss = output.gather(1, targets[:, None])
+  output[one_hot_targets.bool()] = -1e8
+  logit_loss1, _ = output.max(1)
+  loss = logit_loss1[:, None] - logit_loss
+  return loss
