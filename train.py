@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import carlini_loss, init_adv_agents, save_agents_param
+from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param
 from target_model import Net
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
@@ -40,7 +40,7 @@ def train(opts):
           transforms.ToTensor(),
         ])),
       batch_size=batch_size,
-      # shuffle=True
+      shuffle=True
   )
 
   # Initialize the network
@@ -95,7 +95,7 @@ def train(opts):
     save_agents_param(agents, opts)
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
-    r, acc, adv_images, orig_images = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
+    r, loss, acc, adv_images, orig_images = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -114,8 +114,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    if i > 10:
-      break
+    # if i > 1:
+    #   break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
@@ -129,17 +129,20 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
-    r = -(target_model_loss - target_model_loss2) + opts.gamma * l2_perturb
+    r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
-    for optimizer in optimizers:
-      optimizer.zero_grad()
     loss = ((r - baseline.eval(r)) * log_p).mean()
     # loss_log.append(loss.item())
     # average_reward.append(-r.mean().item())
+    for optimizer in optimizers:
+      optimizer.zero_grad()
     loss.backward()
+    # grad_norms = clip_grad_norms(optimizers[0].param_groups, 1.0)
+    # grad_norms, grad_norms_clipped = grad_norms
+    # print("grad_norm: {}, clipped: {}".format(grad_norms[0], grad_norms_clipped[0]))
     for optimizer in optimizers:
       optimizer.step()
   print(f"Target Model Loss: {np.array(rewards).mean()}")
@@ -202,6 +205,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
+    print(f"Attack Accuracy: {attack_accuracy}")
   return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, env.images
 
 
