@@ -111,5 +111,5 @@ class adv_env():
     if self.sample_type == "sample":
       selected = prob.multinomial(num_samples=self.opts.k)
     else:
-      selected = prob.argmax(-1)
+      selected = torch.topk(prob, self.opts.k, dim=-1)[1]
     return selected
