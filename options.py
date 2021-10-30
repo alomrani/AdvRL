@@ -84,7 +84,9 @@ def get_options(args=None):
     parser.add_argument(
         "--delta", type=float, default=0.001, help="Learning rate decay per epoch"
     )
-
+    parser.add_argument(
+        "--k", type=int, default=7, help="k for random grouping"
+    )
     # Training
     parser.add_argument(
         "--lr_model",
