@@ -40,7 +40,7 @@ def train(opts):
           transforms.ToTensor(),
         ])),
       batch_size=batch_size,
-      # shuffle=True
+      shuffle=True
   )
 
   # Initialize the network
@@ -55,7 +55,7 @@ def train(opts):
     PARAM_GRID = list(product(
             [0.01, 0.001, 0.0001, 0.00001, 0.02, 0.002, 0.0002, 0.003, 0.0003, 0.00003],  # learning_rate
             [0.7, 0.75, 0.8, 0.85, 0.9, 0.95],  # baseline exponential decay
-            [0.99, 0.98, 0.97, 0.96, 0.95]  # lr decay
+            [1.0, 0.99, 0.98, 0.97, 0.96, 0.95]  # lr decay
         ))
     # total number of slurm workers detected
     # defaults to 1 if not running under SLURM
@@ -64,7 +64,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_with_masking_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.mode}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -114,8 +114,6 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    if i > 10:
-      break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
@@ -142,7 +140,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     loss.backward()
     for optimizer in optimizers:
       optimizer.step()
-  print(f"Target Model Loss: {np.array(rewards).mean()}")
+  print(f"Average Reward: {np.array(rewards).mean()}")
   print(f"Attack Accuracy: {np.array(acc).mean()}")
   return np.array(rewards), np.array(acc)
 
