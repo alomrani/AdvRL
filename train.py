@@ -126,7 +126,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
+    l2_perturb = 0
     r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
     # print(f"Target Model Accuracy: {accuracy}")
@@ -196,7 +196,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     target_model_loss = loss_fun(out, y)
     target_model_loss1 = loss_fun(out1, y)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
-    l2_perturb = torch.sqrt(((env.curr_images - env.images) ** 2).reshape(x.size(0), 784).sum(1))
+    l2_perturb = 0
     r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
     # print(f"Target Model Accuracy: {accuracy}")
@@ -204,7 +204,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
     print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, env.images
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images[:, 4:-4, 4:-4], env.images[:, 4:-4, 4:-4]
 
 
 
