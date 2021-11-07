@@ -5,14 +5,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class mal_combined_agent(nn.Module):
-  def __init__(self):
-    super(mal_combined_agent, self).__init__()
-    self.conv1 = nn.Conv2d(3, 10, kernel_size=5)
+class box_agent(nn.Module):
+  def __init__(self, opts):
+    super(box_agent, self).__init__()
+    self.conv1 = nn.Conv2d(2, 10, kernel_size=5)
     self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
     # self.conv2_drop = nn.Dropout2d()
-    self.fc1 = nn.Linear(321, 500)
-    self.fc2 = nn.Linear(500, 784)
+    self.fc1 = nn.Linear(321, 200)
+    self.fc2 = nn.Linear(200, int(opts.d / opts.k))
 
   def forward(self, images, timestep):
     x = F.relu(F.max_pool2d(self.conv1(images), 2))
@@ -25,16 +25,40 @@ class mal_combined_agent(nn.Module):
   def sample(self, images, adv_images, timestep, mask):
     state = torch.cat(
         (
-            mask[:, None, :, None].reshape(-1, 1, 28, 28),
             images[:, None, :, :],
             adv_images[:, None, :, :],
         ),
         dim=1
     )
     out = self.forward(state, timestep)
-    # mu, sigma = out[:, -2], torch.abs(out[:, -1].clone()) + 1e-5
-    # n = torch.distributions.Normal(mu.detach(), sigma.detach())
-    # a = n.rsample().detach()
-    # p = torch.exp(-0.5 *((a - mu) / (sigma))**2) * 1 / (sigma * np.sqrt(2 * np.pi))
-    # lp = torch.log(p + 1e-5)
+    return out
+
+
+class grad_agent(nn.Module):
+  def __init__(self, opts):
+    super(grad_agent, self).__init__()
+    self.conv1 = nn.Conv2d(2, 10, kernel_size=5)
+    self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+    # self.conv2_drop = nn.Dropout2d()
+    self.fc1 = nn.Linear(322, 150)
+    self.fc2 = nn.Linear(150, 2)
+    self.opts = opts
+
+  def forward(self, images, timestep, idx):
+    x = F.relu(F.max_pool2d(self.conv1(images), 2))
+    x = F.relu(F.max_pool2d(self.conv2(x), 2))
+    x = torch.cat((x.view(-1, 320), torch.ones(images.size(0), 1, device=images.device) * timestep, idx * self.opts.k / self.opts.num_timesteps), dim=1)
+    x = F.relu(self.fc1(x))
+    x = self.fc2(x)
+    return x
+
+  def sample(self, images, adv_images, timestep, mask, idx):
+    state = torch.cat(
+        (
+            images[:, None, :, :],
+            adv_images[:, None, :, :],
+        ),
+        dim=1
+    )
+    out = self.forward(state, timestep, idx)
     return out

@@ -78,14 +78,17 @@ def get_options(args=None):
         help="Number of timesteps in charging simulation",
     )
     parser.add_argument(
-        "--epsilon", type=float, default=0.15, help="Learning rate decay per epoch"
+        "--epsilon", type=float, default=0.2, help="Learning rate decay per epoch"
     )
 
     parser.add_argument(
-        "--delta", type=float, default=0.001, help="Learning rate decay per epoch"
+        "--delta", type=float, default=0.01, help="Learning rate decay per epoch"
     )
     parser.add_argument(
-        "--k", type=int, default=7, help="k for random grouping"
+        "--k", type=int, default=4, help="k for random grouping"
+    )
+    parser.add_argument(
+        "--d", type=int, default=784, help="k for random grouping"
     )
     # Training
     parser.add_argument(

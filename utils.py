@@ -1,7 +1,8 @@
 from perturb_agent import mal_agent2
 from pixel_agent import mal_agent
-from combined_agent import mal_combined_agent
+from combined_agent import box_agent, grad_agent
 from rg_attack import RGAttack
+from sg_attack import SGAttack
 import torch
 import torch.nn.functional as F
 import math
@@ -12,14 +13,15 @@ import numpy as np
 
 def init_adv_agents(opts, agents_param_paths=[]):
   if opts.model == "combined_mal":
-    agents = [mal_combined_agent().to(opts.device)]
-  elif opts.model != "rg":
-    agent = mal_agent().to(opts.device)
-    agent2 = mal_agent2().to(opts.device)
-    agents = [agent, agent2]
-  else:
+    agents = [box_agent(opts).to(opts.device), grad_agent(opts).to(opts.device)]
+  elif opts.model == "fda_mal":
+    agent = box_agent(opts).to(opts.device)
+    agents = [agent]
+  elif opts.model == "rg":
     agents = [RGAttack(784, opts)]
-  if opts.model != "rg":
+  elif opts.model == "sg":
+    agents = [SGAttack(784, opts)]
+  if opts.model not in  ["rg", "sg"]:
     for i, agent_param_path in enumerate(agents_param_paths):
       agent_param = torch.load(agent_param_path, map_location=opts.device)
       agents[i].load_state_dict(agent_param)

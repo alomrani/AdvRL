@@ -8,10 +8,14 @@ class RGAttack(nn.Module):
         self.k = opts.k
         self.d = d
         self.batch_size = opts.batch_size
+        self.opts = opts
     def forward(self, timestep):
-        if timestep == 0:
+        if timestep == 0 or not self.opts.mask:
             r = torch.randperm(self.d)
+            # r = torch.randint(0, self.d, size=self.indices.shape)
             self.indices = self.indices[:, r]
+
         selected_mask = torch.zeros(self.batch_size, self.d, device=self.indices.device)
-        selected_mask = selected_mask.scatter_(-1, self.indices[:, self.k * timestep : self.k * timestep + self.k], 1)
-        return selected_mask.reshape(-1, 28, 28), 0
+        selected_indices = self.indices[:, self.k * timestep : self.k * timestep + self.k]
+        selected_mask = selected_mask.scatter_(-1, selected_indices, 1)
+        return selected_mask.reshape(-1, 28, 28).unsqueeze(1), 0
