@@ -48,7 +48,6 @@ class adv_env():
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel + lp_grad_est.squeeze(1)
       self.timestep += 1
-
     return log
 
   def call_agents(self, agents, timestep):
@@ -63,6 +62,7 @@ class adv_env():
       lp_grad = torch.log_softmax(out_grad_est, dim=1)
       selected_grad = self.sample(lp_grad.exp())
       lp_grad = lp_grad.gather(1, selected_grad)
+      selected_grad = torch.cat((torch.ones(self.images.size(0), 1), torch.ones(self.images.size(0), 1) * -1), dim=1).to(self.device).gather(1, selected_grad)
     elif self.opts.model == "fda_mal":
       box_agent = agents[0]
       out_pixel = box_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
