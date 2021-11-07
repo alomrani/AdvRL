@@ -53,7 +53,7 @@ class adv_env():
 
   def call_agents(self, agents, timestep):
     selected_grad = None
-    lp_grad = torch.tensor([[0.]])
+    lp_grad = torch.tensor([[0.]], device=self.device)
     if self.opts.model == "combined_mal":
       box_agent = agents[0]
       grad_agent = agents[1]
