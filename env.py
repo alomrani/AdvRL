@@ -20,18 +20,19 @@ class adv_env():
     self.curr_grad_pos = 0.
     self.curr_grad_neg = 0.
     self.delta = opts.delta
+    self.curr_loss_est = None
     self.timestep = 0
   def update(self, selected_pixels, selected_mask, grad_estimate=None):
     self.mask = torch.scatter(self.mask, 1, selected_pixels, 1)
     if grad_estimate is None:
       with torch.no_grad():
-        x_right = torch.log_softmax(self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.)), dim=1)
-        x_left = torch.log_softmax(self.target_model(torch.clip(self.curr_images.unsqueeze(1) - selected_mask * self.delta, min=0., max=1.)), dim=1)
+        x_right = self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.))
+        x_left = self.target_model(torch.clip(self.curr_images.unsqueeze(1), min=0., max=1.))
 
       loss_right = carlini_loss(x_right, self.targets)
       loss_left = carlini_loss(x_left, self.targets)
-
-      grad_estimate = (loss_right - loss_left) / (2 * self.delta)
+      self.curr_loss_est = (loss_right + loss_right) / 2.
+      grad_estimate = (loss_right - loss_left) / (self.delta)
     self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.epsilon
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     return
@@ -65,7 +66,7 @@ class adv_env():
       selected_grad = torch.cat((torch.ones(self.images.size(0), 1), torch.ones(self.images.size(0), 1) * -1), dim=1).to(self.device).gather(1, selected_grad)
     elif self.opts.model == "fda_mal":
       box_agent = agents[0]
-      out_pixel = box_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
+      out_pixel = box_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask, self.targets, self.target_model, self.curr_loss_est)
       selected_pixels, selected_mask, lp_pixel = self.get_selected_pixels(out_pixel, self.mask)
     elif self.opts.model == "rg" or self.opts.model == "sg":
       g_attack = agents[0]

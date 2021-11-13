@@ -98,7 +98,7 @@ def get_options(args=None):
         help="Set the learning rate for the actor network",
     )
     parser.add_argument(
-        "--lr_decay", type=float, default=1.0, help="Learning rate decay per epoch"
+        "--lr_decay", type=float, default=0.99, help="Learning rate decay per epoch"
     )
 
     parser.add_argument(
