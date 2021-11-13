@@ -64,7 +64,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.mode}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -121,7 +121,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
-      out2 = target_model(env.images.unsqueeze(1))
+      out2 = target_model(x.unsqueeze(1))
       attack_accuracy = torch.abs((out2.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
@@ -191,7 +191,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     with torch.no_grad():
         env.deploy(agents, x, y)
         out = target_model(env.curr_images.unsqueeze(1))
-        out1 = target_model(env.images.unsqueeze(1))
+        out1 = target_model(x.unsqueeze(1))
         attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
     target_model_loss = loss_fun(out, y)
     target_model_loss1 = loss_fun(out1, y)
@@ -204,7 +204,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
     print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images[:, 4:-4, 4:-4], env.images[:, 4:-4, 4:-4]
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, x
 
 
 

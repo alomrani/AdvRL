@@ -44,6 +44,9 @@ class adv_env():
     log = 0
     self.device = images.device
     for i in range(self.time_horizon):
+      if i % self.opts.reset_mask == 0:
+        self.mask = torch.zeros(self.opts.batch_size, int(self.d / self.opts.k), device=self.device)
+        self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel + lp_grad_est.squeeze(1)
