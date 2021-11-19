@@ -47,6 +47,9 @@ class adv_env():
     with torch.no_grad():
       self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
     for i in range(self.time_horizon):
+      if i != 0 and i % self.opts.reset_mask == 0:
+        self.mask = torch.zeros(self.opts.batch_size, int(self.d / self.opts.k), device=self.device)
+        self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel + lp_grad_est.squeeze(1)
@@ -55,7 +58,7 @@ class adv_env():
 
   def call_agents(self, agents, timestep):
     selected_grad = None
-    lp_grad = torch.tensor([[0.]])
+    lp_grad = torch.tensor([[0.]], device=self.device)
     if self.opts.model == "combined_mal":
       box_agent = agents[0]
       grad_agent = agents[1]

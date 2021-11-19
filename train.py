@@ -55,7 +55,7 @@ def train(opts):
     PARAM_GRID = list(product(
             [0.01, 0.001, 0.0001, 0.00001, 0.02, 0.002, 0.0002, 0.003, 0.0003, 0.00003],  # learning_rate
             [0.7, 0.75, 0.8, 0.85, 0.9, 0.95],  # baseline exponential decay
-            [0.99, 0.98, 0.97, 0.96, 0.95]  # lr decay
+            [1.0, 0.99, 0.98, 0.97, 0.96, 0.95]  # lr decay
         ))
     # total number of slurm workers detected
     # defaults to 1 if not running under SLURM
@@ -64,7 +64,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_with_masking_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -114,8 +114,6 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    # if i > 1:
-    #   break
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
@@ -123,7 +121,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
-      out2 = target_model(env.images.unsqueeze(1))
+      out2 = target_model(x.unsqueeze(1))
       attack_accuracy = torch.abs((out2.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
       target_model_loss = loss_fun(out, y)
       target_model_loss2 = loss_fun(out2, y)
@@ -146,7 +144,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     # print("grad_norm: {}, clipped: {}".format(grad_norms[0], grad_norms_clipped[0]))
     for optimizer in optimizers:
       optimizer.step()
-  print(f"Target Model Loss: {np.array(rewards).mean()}")
+  print(f"Average Reward: {np.array(rewards).mean()}")
   print(f"Attack Accuracy: {np.array(acc).mean()}")
   return np.array(rewards), np.array(acc)
 
@@ -194,7 +192,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     with torch.no_grad():
         env.deploy(agents, x, y)
         out = target_model(env.curr_images.unsqueeze(1))
-        out1 = target_model(env.images.unsqueeze(1))
+        out1 = target_model(x.unsqueeze(1))
         attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
     target_model_loss = loss_fun(out, y)
     target_model_loss1 = loss_fun(out1, y)
@@ -207,7 +205,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
     print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, env.images
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, x
 
 
 

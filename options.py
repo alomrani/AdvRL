@@ -36,6 +36,12 @@ def get_options(args=None):
     )
 
     parser.add_argument(
+        "--reset_mask",
+        type=int,
+        default=1000,
+        help="Reset mask every theta iterations (used for iterative attacks)",
+    )
+    parser.add_argument(
         "--val_size",
         type=float,
         default=1000.,
