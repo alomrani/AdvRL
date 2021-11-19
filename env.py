@@ -27,12 +27,12 @@ class adv_env():
     if grad_estimate is None:
       with torch.no_grad():
         x_right = self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.))
-        x_left = self.target_model(torch.clip(self.curr_images.unsqueeze(1), min=0., max=1.))
+        x_left = self.target_model(torch.clip(self.curr_images.unsqueeze(1) - selected_mask * self.delta, min=0., max=1.))
 
       loss_right = carlini_loss(x_right, self.targets)
       loss_left = carlini_loss(x_left, self.targets)
-      self.curr_loss_est = (loss_right + loss_right) / 2.
-      grad_estimate = (loss_right - loss_left) / (self.delta)
+      grad_estimate = (loss_right - loss_left) / (2 * self.delta)
+      self.curr_loss_est = (loss_right + loss_left) / 2.
     self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.epsilon
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     return
@@ -44,6 +44,8 @@ class adv_env():
     self.d = self.opts.d
     log = 0
     self.device = images.device
+    with torch.no_grad():
+      self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
     for i in range(self.time_horizon):
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)

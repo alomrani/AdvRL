@@ -30,9 +30,6 @@ class box_agent(nn.Module):
         ),
         dim=1
     )
-    if loss is None:
-      with torch.no_grad():
-        loss = carlini_loss(target_model(adv_images.unsqueeze(1)), targets)
     out = self.forward(state, timestep, loss)
     return out
 
