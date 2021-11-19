@@ -38,7 +38,7 @@ def get_options(args=None):
     parser.add_argument(
         "--reset_mask",
         type=int,
-        default=10,
+        default=1000,
         help="Reset mask every theta iterations (used for iterative attacks)",
     )
     parser.add_argument(
@@ -104,7 +104,7 @@ def get_options(args=None):
         help="Set the learning rate for the actor network",
     )
     parser.add_argument(
-        "--lr_decay", type=float, default=1.0, help="Learning rate decay per epoch"
+        "--lr_decay", type=float, default=0.99, help="Learning rate decay per epoch"
     )
 
     parser.add_argument(

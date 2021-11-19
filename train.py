@@ -129,12 +129,13 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     l2_perturb = 0
     r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * l2_perturb
     # print(torch.softmax(out, dim=1))
-    # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     loss = ((r - baseline.eval(r)) * log_p).mean()
     # loss_log.append(loss.item())
     # average_reward.append(-r.mean().item())
+    print(f"Avg Reward : {-r.mean().item()}")
+    print(f"Attack Accuracy : {attack_accuracy.item()}")
     for optimizer in optimizers:
       optimizer.zero_grad()
     loss.backward()
