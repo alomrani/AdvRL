@@ -11,6 +11,7 @@ class adv_env():
     self.curr_images = None
     self.mask = torch.zeros(opts.batch_size, int(opts.d / opts.k), device=opts.device)
     self.epsilon = opts.epsilon
+    self.alpha = opts.alpha
     self.target_model = target_model
     self.time_horizon = opts.num_timesteps
     self.device = opts.device
@@ -33,7 +34,9 @@ class adv_env():
       loss_left = carlini_loss(x_left, self.targets)
       grad_estimate = (loss_right - loss_left) / (2 * self.delta)
       self.curr_loss_est = (loss_right + loss_left) / 2.
-    self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.epsilon
+    self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
+    clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
+    self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
     return
 
@@ -47,12 +50,12 @@ class adv_env():
     with torch.no_grad():
       self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
     for i in range(self.time_horizon):
-      if i != 0 and i % self.opts.reset_mask == 0:
-        self.mask = torch.zeros(self.opts.batch_size, int(self.d / self.opts.k), device=self.device)
-        self.images = self.curr_images.clone()
+      #if i != 0 and i % self.opts.reset_mask == 0:
+      #  self.mask = torch.zeros(self.opts.batch_size, int(self.d / self.opts.k), device=self.device)
+      #  self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
-      log += lp_pixel + lp_grad_est.squeeze(1)
+      log += lp_pixel
       self.timestep += 1
     return log
 
@@ -102,5 +105,5 @@ class adv_env():
     if self.sample_type == "sample":
       selected = prob.multinomial(num_samples=1)
     else:
-      selected = torch.topk(prob, 1, dim=-1)[1]
+      selected = prob.argmax(dim=-1).unsqueeze(1)
     return selected

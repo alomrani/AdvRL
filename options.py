@@ -91,6 +91,9 @@ def get_options(args=None):
         "--delta", type=float, default=0.01, help="Learning rate decay per epoch"
     )
     parser.add_argument(
+        "--alpha", type=float, default=0.01, help="Alpha for iterative attacks"
+    )
+    parser.add_argument(
         "--k", type=int, default=4, help="k for random grouping"
     )
     parser.add_argument(

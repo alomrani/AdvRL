@@ -64,7 +64,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.alpha}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -134,8 +134,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     loss = ((r - baseline.eval(r)) * log_p).mean()
     # loss_log.append(loss.item())
     # average_reward.append(-r.mean().item())
-    print(f"Avg Reward : {-r.mean().item()}")
-    print(f"Attack Accuracy : {attack_accuracy.item()}")
+    # print(f"Avg Reward : {-r.mean().item()}")
+    # print(f"Attack Accuracy : {attack_accuracy.item()}")
     for optimizer in optimizers:
       optimizer.zero_grad()
     loss.backward()
@@ -204,7 +204,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
-    print(f"Attack Accuracy: {attack_accuracy}")
+  #print(f"Attack Accuracy: {attack_accuracy}")
   return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, x
 
 
