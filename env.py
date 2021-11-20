@@ -3,14 +3,19 @@ from torch.autograd import grad
 import torch.nn.functional as F
 import numpy as np
 from utils import carlini_loss
+import math
 
 class adv_env():
 
   def __init__(self, target_model, opts):
     self.images = None
     self.curr_images = None
-    self.mask = torch.zeros(opts.batch_size, int(opts.d / opts.k), device=opts.device)
+    kernel_size = int(opts.k ** 0.5)
+    self.padded_size = int(math.ceil(((opts.d ** 0.5) / kernel_size)) * kernel_size)
+    self.padding = int((self.padded_size - (opts.d ** 0.5)) / 2)
+    self.mask = torch.zeros(opts.batch_size, int((self.padded_size ** 2) / opts.k), device=opts.device)
     self.epsilon = opts.epsilon
+    self.alpha = opts.alpha
     self.target_model = target_model
     self.time_horizon = opts.num_timesteps
     self.device = opts.device
@@ -23,7 +28,8 @@ class adv_env():
     self.curr_loss_est = None
     self.timestep = 0
   def update(self, selected_pixels, selected_mask, grad_estimate=None):
-    self.mask = torch.scatter(self.mask, 1, selected_pixels, 1)
+    if self.opts.model == "fda_mal":
+      self.mask = torch.scatter(self.mask, 1, selected_pixels, 1)
     if grad_estimate is None:
       with torch.no_grad():
         x_right = self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.))
@@ -33,9 +39,11 @@ class adv_env():
       loss_left = carlini_loss(x_left, self.targets)
       grad_estimate = (loss_right - loss_left) / (2 * self.delta)
       self.curr_loss_est = (loss_right + loss_left) / 2.
-    self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.epsilon
+    self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
+    clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
+    self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
-    return
+    return 0
 
   def deploy(self, agents, images, true_targets):
     self.curr_images = images.clone()
@@ -43,16 +51,16 @@ class adv_env():
     self.images = images
     self.d = self.opts.d
     log = 0
+    # r_t = []
     self.device = images.device
     with torch.no_grad():
       self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
+      self.curr_loss = self.curr_loss_est
     for i in range(self.time_horizon):
-      if i != 0 and i % self.opts.reset_mask == 0:
-        self.mask = torch.zeros(self.opts.batch_size, int(self.d / self.opts.k), device=self.device)
-        self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
-      log += lp_pixel + lp_grad_est.squeeze(1)
+      log += lp_pixel
+      # r_t.append(r)
       self.timestep += 1
     return log
 
@@ -87,9 +95,11 @@ class adv_env():
       kernel_size = int(self.opts.k ** 0.5)
       l_p = torch.log_softmax(logits, dim=1)
       selected_block = self.sample(l_p.exp())
-      selected_mask = F.unfold(torch.zeros(self.images.shape, device=self.device).reshape(-1, 28, 28).unsqueeze(1), kernel_size, stride=kernel_size).transpose(1, 2)
+      selected_mask = F.unfold(torch.zeros(self.images.shape, device=self.device).reshape(-1, 28, 28).unsqueeze(1), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
       selected_mask = selected_mask.scatter(1, selected_block[:, :, None].repeat(1, 1, kernel_size ** 2), 1)
-      selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=int(self.d ** 0.5))
+      selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=self.padded_size, padding=self.padding)
+      if self.padding != 0:
+        selected_mask = selected_mask[:, :, self.padding:-self.padding, self.padding:-self.padding]
       return selected_block, selected_mask, l_p.gather(1, selected_block).squeeze(1)
     else:
       l_p = torch.log_softmax(logits, dim=1)
@@ -102,5 +112,5 @@ class adv_env():
     if self.sample_type == "sample":
       selected = prob.multinomial(num_samples=1)
     else:
-      selected = torch.topk(prob, 1, dim=-1)[1]
+      selected = prob.argmax(dim=-1).unsqueeze(1)
     return selected

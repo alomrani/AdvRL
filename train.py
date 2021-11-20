@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 from collections import OrderedDict
 import torch.utils.model_zoo as model_zoo
+import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
@@ -21,7 +22,7 @@ import json
 
 def train(opts):
   torch.manual_seed(opts.seed)
-  if not os.path.exists(opts.save_dir):
+  if not os.path.exists(opts.save_dir) and not (opts.eval_fsgm):
     os.makedirs(opts.save_dir)
     # Save arguments so exact configuration can always be found
     with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
@@ -80,7 +81,7 @@ def train(opts):
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
 
-  elif not opts.eval_only:
+  elif not (opts.eval_only or opts.eval_fsgm):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
     plt.figure()
     ax1, = plt.plot(np.array(r))
@@ -106,8 +107,54 @@ def train(opts):
     plt.imsave(opts.save_dir + '/orig_image2.png', np.array(orig_images[0]), cmap='gray')
     plt.imsave(opts.save_dir + '/adv_image3.png', np.array(adv_images[50]), cmap='gray')
     plt.imsave(opts.save_dir + '/orig_image3.png', np.array(orig_images[50]), cmap='gray')
+  elif opts.eval_fsgm:
+    target_model.eval()
+    attack_accuracy = 0
+    for j, (orig_data, target) in enumerate(train_loader):
+      # Send the data and label to the device
+      orig_data, target = orig_data.to(device), target.to(device)
+      data = orig_data.clone()
+      output = target_model(data)
+      init_pred = output.argmax(1)
+      for i in range(opts.num_timesteps):
+        # Set requires_grad attribute of tensor. Important for Attack
+        data.requires_grad = True
+        # Forward pass the data through the model
+        output = target_model(data)
+
+        # Calculate the loss
+        loss = carlini_loss(output, target)
+
+        # Zero all existing gradients
+        target_model.zero_grad()
+
+        # Calculate gradients of model in backward pass
+        loss.backward()
+
+        # Collect datagrad
+        data_grad = data.grad.data
+
+        # Call FGSM Attack
+        perturbed_data = fgsm_attack(data, opts.alpha, data_grad)
+        clip_mask = torch.ones((data.size(2), data.size(3)), device=opts.device)
+        data = torch.clamp(perturbed_data, min=(orig_data - clip_mask * opts.epsilon), max=(orig_data + clip_mask * opts.epsilon))
+        data = torch.clip(data, min=0, max=1)
+      with torch.no_grad():
+        output2 = target_model(data)
+        attack_accuracy += (init_pred != output2.argmax(1)).float().item()
+      if j % 200 == 0 and j != 0:
+        print(attack_accuracy / j)
 
 
+def fgsm_attack(image, alpha, data_grad):
+    # Collect the element-wise sign of the data gradient
+    sign_data_grad = data_grad.sign()
+    # Create the perturbed image by adjusting each pixel of the input image
+    perturbed_image = image + alpha * sign_data_grad
+    # Adding clipping to maintain [0,1] range
+    perturbed_image = torch.clamp(perturbed_image, 0, 1)
+    # Return the perturbed image
+    return perturbed_image.detach()
 
 def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   loss_fun = carlini_loss
@@ -118,6 +165,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     y = y.to(opts.device)
     env = adv_env(target_model, opts)
     log_p = env.deploy(agents, x, y)
+
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
