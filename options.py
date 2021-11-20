@@ -124,11 +124,22 @@ def get_options(args=None):
         default=0.0,
         help="hyperparameter to control perturbation",
     )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.01,
+        help="hyperparameter to control perturbation",
+    )
 
     parser.add_argument(
         "--eval_only",
         action="store_true",
-        help="Set this value to only evaluate model on a specific graph size",
+        help="Set this value to only evaluate attack model",
+    )
+    parser.add_argument(
+        "--eval_fsgm",
+        action="store_true",
+        help="Set this value to only evaluate gsgm attack",
     )
 
 
