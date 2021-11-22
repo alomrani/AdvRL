@@ -1,0 +1,7 @@
+All hps: 2021-11-21 21:01:44 model=clp_mnist dataset=mnist attack=square_linf n_ex=10000 eps=0.3 p=0.8 n_iter=200
+Clean accuracy: 98.82%
+1: acc=91.46% acc_corr=92.55% avg#q_ae=1.74 med#q=2.0, avg_margin=1.85 (n_ex=9882, eps=0.300, 5.36s)
+2: acc=88.99% acc_corr=90.05% avg#q_ae=2.06 med#q=2.0, avg_margin=1.67 (n_ex=9882, eps=0.300, 10.29s)
+3: acc=87.20% acc_corr=88.24% avg#q_ae=2.36 med#q=2.0, avg_margin=1.56 (n_ex=9882, eps=0.300, 15.05s)
+4: acc=85.51% acc_corr=86.53% avg#q_ae=2.69 med#q=2.0, avg_margin=1.47 (n_ex=9882, eps=0.300, 19.66s)
+5: acc=83.93% acc_corr=84.93% avg#q_ae=3.04 med#q=3.0, avg_margin=1.40 (n_ex=9882, eps=0.300, 24.39s)

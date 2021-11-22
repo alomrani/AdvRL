@@ -1,0 +1,4 @@
+All hps: 2021-11-21 21:38:41 model=clp_mnist dataset=mnist attack=square_linf n_ex=200 eps=2.0 p=0.3 n_iter=200
+Clean accuracy: 99.50%
+1: acc=1.00% acc_corr=1.01% avg#q_ae=1.10 med#q=1.0, avg_margin=-1.16 (n_ex=199, eps=2.000, 0.06s)
+2: acc=0.00% acc_corr=0.00% avg#q_ae=1.12 med#q=1.0, avg_margin=-1.18 (n_ex=199, eps=2.000, 0.15s)

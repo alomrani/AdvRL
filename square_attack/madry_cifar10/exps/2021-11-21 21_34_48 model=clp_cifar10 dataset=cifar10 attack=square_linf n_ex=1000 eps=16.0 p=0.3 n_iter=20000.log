@@ -1,0 +1,10 @@
+All hps: 2021-11-21 21:34:48 model=clp_cifar10 dataset=cifar10 attack=square_linf n_ex=1000 eps=16.0 p=0.3 n_iter=20000
+Clean accuracy: 75.50%
+1: acc=61.50% acc_corr=81.46% avg#q_ae=1.26 med#q=1.0, avg_margin=4.74 (n_ex=755, eps=16.000, 10.04s)
+2: acc=58.00% acc_corr=76.82% avg#q_ae=1.61 med#q=1.0, avg_margin=4.23 (n_ex=755, eps=16.000, 19.80s)
+3: acc=56.40% acc_corr=74.70% avg#q_ae=1.81 med#q=1.0, avg_margin=3.94 (n_ex=755, eps=16.000, 30.21s)
+4: acc=55.30% acc_corr=73.25% avg#q_ae=1.99 med#q=1.0, avg_margin=3.73 (n_ex=755, eps=16.000, 39.11s)
+5: acc=53.90% acc_corr=71.39% avg#q_ae=2.25 med#q=2.0, avg_margin=3.53 (n_ex=755, eps=16.000, 47.70s)
+6: acc=52.50% acc_corr=69.54% avg#q_ae=2.53 med#q=2.0, avg_margin=3.35 (n_ex=755, eps=16.000, 56.32s)
+7: acc=50.90% acc_corr=67.42% avg#q_ae=2.89 med#q=2.0, avg_margin=3.19 (n_ex=755, eps=16.000, 64.74s)
+8: acc=49.90% acc_corr=66.09% avg#q_ae=3.13 med#q=2.0, avg_margin=3.06 (n_ex=755, eps=16.000, 73.02s)
