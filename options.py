@@ -31,7 +31,7 @@ def get_options(args=None):
     parser.add_argument(
         "--model",
         type=str,
-        default="combined_mal",
+        default="fda_mal",
         help="Type of adversarial agent to train/test",
     )
 

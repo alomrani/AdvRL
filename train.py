@@ -1,11 +1,12 @@
 import torch.nn as nn
 import torch
 from collections import OrderedDict
+
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
@@ -31,17 +32,29 @@ def train(opts):
   batch_size = opts.batch_size
   device = opts.device
   agents = init_adv_agents(opts)
-  train_loader = DataLoader(
-    datasets.MNIST(
+  mnist_dataset = datasets.MNIST(
       opts.output_dir,
       train=False,
       download=True,
       transform=
         transforms.Compose([
           transforms.ToTensor(),
-        ])),
+  ]))
+  train_dataset, val_dataset, test_dataset = random_split(mnist_dataset, (7000, 1000, 2000))
+  train_loader = DataLoader(
+      train_dataset,
       batch_size=batch_size,
       shuffle=True
+  )
+  val_loader = DataLoader(
+    val_dataset,
+    batch_size=batch_size,
+    shuffle=True
+  )
+  test_loader = DataLoader(
+    test_dataset,
+    batch_size=batch_size,
+    shuffle=True
   )
 
   # Initialize the network
@@ -76,27 +89,31 @@ def train(opts):
       opts.lr_decay = params[2]
       agents = init_adv_agents(opts)
       r, acc = train_epoch(agents, target_model, train_loader, opts)
-      eval_r, eval_loss, eval_acc, *_ = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
+      eval_r, eval_loss, eval_acc, *_ = eval(agents, target_model, val_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
 
   elif not (opts.eval_only or opts.eval_fsgm):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
+
     plt.figure()
     ax1, = plt.plot(np.array(r))
     plt.xlabel("Batch")
     plt.ylabel("Mean Reward")
-    plt.savefig(opts.save_dir + "/reward_plot.png")
+    plt.savefig(opts.log_dir + "/reward_plot.png")
+    torch.save(torch.tensor(r), opts.log_dir + "/reward_logs.pt")
+
     plt.figure(2)
     ax2, = plt.plot(np.array(acc))
     plt.xlabel("Batch")
     plt.ylabel("Accuracy")
-    plt.savefig(opts.save_dir + "/acc_plot.png")
+    plt.savefig(opts.log_dir + "/acc_plot.png")
+    torch.save(torch.tensor(acc), opts.log_dir + "/attack_acc_logs.pt")
     save_agents_param(agents, opts)
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
-    r, loss, acc, adv_images, orig_images = eval(agents, target_model, train_loader, opts.num_timesteps, device, opts)
+    r, loss, acc, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -110,7 +127,8 @@ def train(opts):
   elif opts.eval_fsgm:
     target_model.eval()
     attack_accuracy = 0
-    for j, (orig_data, target) in enumerate(train_loader):
+    assert batch_size == 1  # Needed for FGSM attack to work
+    for j, (orig_data, target) in enumerate(test_loader):
       # Send the data and label to the device
       orig_data, target = orig_data.to(device), target.to(device)
       data = orig_data.clone()
