@@ -142,7 +142,15 @@ def train(opts):
         output = target_model(data)
 
         # Calculate the loss
-        loss = carlini_loss(output, target)
+        if not opts.targetted:
+          T = target
+        else:
+          # Randomly sample a target other than true class
+          T = torch.ones(opts.batch_size, 10) / 9
+          T = T.scatter(1, target, 0)
+          T = T.multinomial()
+          print(T.shape)
+        loss = carlini_loss(output, T)
 
         # Zero all existing gradients
         target_model.zero_grad()
@@ -208,16 +216,22 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
+    if not opts.targetted:
+      T = y
+    else:
+      # Randomly sample a target other than true class
+      T = torch.ones(opts.batch_size, 10) / 9
+      T = T.scatter(1, y[:, None], 0)
+      T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
-    log_p = env.deploy(agents, x, y)
-
+    log_p = env.deploy(agents, x, y, T)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
       out2 = target_model(x.unsqueeze(1))
-      attack_accuracy = torch.abs((out2.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
-      target_model_loss = loss_fun(out, y)
-      target_model_loss2 = loss_fun(out2, y)
+      attack_accuracy = torch.abs((out2.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
+      target_model_loss = loss_fun(out, T)
+      target_model_loss2 = loss_fun(out2, T)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = 0
     r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * l2_perturb
@@ -281,18 +295,26 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
+    if not opts.targetted:
+      T = y
+    else:
+      # Randomly sample a target other than true class
+      T = torch.ones(opts.batch_size, 10) / 9.
+      T = T.scatter(1, y[:, None], 0)
+      T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
     env.sample_type = "greedy"
     with torch.no_grad():
-        env.deploy(agents, x, y)
+        env.deploy(agents, x, y, T)
         out = target_model(env.curr_images.unsqueeze(1))
         out1 = target_model(x.unsqueeze(1))
-        attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
-    target_model_loss = loss_fun(out, y)
-    target_model_loss1 = loss_fun(out1, y)
+        attack_accuracy = torch.abs((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
+    target_model_loss = loss_fun(out, T)
+    target_model_loss1 = loss_fun(out1, T)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = 0
     r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
+    # print(-r.mean().item())
     # print(torch.softmax(out, dim=1))
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
