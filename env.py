@@ -14,6 +14,7 @@ class adv_env():
     self.padded_size = int(math.ceil(((opts.d ** 0.5) / kernel_size)) * kernel_size)
     self.padding = int((self.padded_size - (opts.d ** 0.5)) / 2)
     self.mask = torch.zeros(opts.batch_size, int((self.padded_size ** 2) / opts.k), device=opts.device)
+    self.steps_needed = torch.zeros(opts.batch_size, 1, device=opts.device)
     self.epsilon = opts.epsilon
     self.alpha = opts.alpha
     self.target_model = target_model
@@ -40,9 +41,10 @@ class adv_env():
       grad_estimate = (loss_right - loss_left) / (2 * self.delta)
       self.curr_loss_est = (loss_right + loss_left) / 2.
     self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
-    clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
-    self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
+    # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
+    # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
+    self.steps_needed += (self.curr_loss_est < 0).float()
     return 0
 
   def deploy(self, agents, images, true_targets):
@@ -55,13 +57,16 @@ class adv_env():
     self.device = images.device
     with torch.no_grad():
       self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
-      self.curr_loss = self.curr_loss_est
     for i in range(self.time_horizon):
+      if i != 0 and i % self.opts.reset_mask == 0:
+        self.mask = torch.zeros(self.mask.shape, device=self.device)
+        self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel
       # r_t.append(r)
       self.timestep += 1
+    print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
     return log
 
   def call_agents(self, agents, timestep):

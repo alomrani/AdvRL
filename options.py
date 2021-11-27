@@ -142,6 +142,12 @@ def get_options(args=None):
         help="Set this value to only evaluate gsgm attack",
     )
 
+    parser.add_argument(
+        "--eval_plots",
+        action="store_true",
+        help="Generate eval plots for all attack strategies",
+    )
+
 
     parser.add_argument(
         "--eval_output", type=str, default=".", help="path to output evaulation plots",

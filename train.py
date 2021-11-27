@@ -1,3 +1,4 @@
+import math
 import torch.nn as nn
 import torch
 from collections import OrderedDict
@@ -94,7 +95,7 @@ def train(opts):
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
 
-  elif not (opts.eval_only or opts.eval_fsgm):
+  elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
 
     plt.figure()
@@ -113,7 +114,7 @@ def train(opts):
     save_agents_param(agents, opts)
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
-    r, loss, acc, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+    r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -162,6 +163,32 @@ def train(opts):
         attack_accuracy += (init_pred != output2.argmax(1)).float().item()
       if j % 200 == 0 and j != 0:
         print(attack_accuracy / j)
+  elif opts.eval_plots:
+    kernel_sizes = [4, 9]
+    eps = [0.1, 0.15, 0.2, 0.25, 0.3]
+
+    for k in kernel_sizes:
+      attack_acc = []
+      for epsilon in eps:
+        opts.k = k
+        opts.epsilon = epsilon
+        opts.alpha = epsilon
+
+        kernel_size = int(k ** 0.5)
+        padded_size = int(math.ceil(((784 ** 0.5) / kernel_size)) * kernel_size)
+        num_timesteps = int((padded_size ** 2) / k)
+        opts.num_timesteps = num_timesteps
+        dir = f"outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
+        list_of_files = sorted(
+            os.listdir(dir), key=lambda s: int(s[8:12] + s[13:])
+        )
+        agents = init_adv_agents(opts, [dir + f"/{list_of_files[-1]}/agent_0.pt"])
+
+        r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+        print(f"k={k} eps={epsilon}: Avg queries={avg_queries.mean().item()} Attack Accuracy={acc.mean().item()}")
+
+        attack_acc.append(acc.mean().item())
+
 
 
 def fgsm_attack(image, alpha, data_grad):
@@ -250,6 +277,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   rewards = []
   acc = []
   losses = []
+  avg_queries = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
@@ -270,8 +298,9 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
+    avg_queries.append((env.steps_needed * (env.steps_needed != time_horizon).float()).sum() / (env.steps_needed != time_horizon).float().sum())
     print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, x
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), torch.tensor(avg_queries), env.curr_images, x
 
 
 
