@@ -1,0 +1,11 @@
+All hps: 2021-11-21 21:39:00 model=clp_mnist dataset=mnist attack=square_linf n_ex=1000 eps=2.0 p=0.3 n_iter=200
+Clean accuracy: 98.40%
+1: acc=2.90% acc_corr=2.95% avg#q_ae=1.07 med#q=1.0, avg_margin=-1.17 (n_ex=984, eps=2.000, 0.12s)
+2: acc=1.60% acc_corr=1.63% avg#q_ae=1.10 med#q=1.0, avg_margin=-1.19 (n_ex=984, eps=2.000, 0.19s)
+3: acc=0.60% acc_corr=0.61% avg#q_ae=1.13 med#q=1.0, avg_margin=-1.20 (n_ex=984, eps=2.000, 0.24s)
+4: acc=0.50% acc_corr=0.51% avg#q_ae=1.13 med#q=1.0, avg_margin=-1.20 (n_ex=984, eps=2.000, 0.29s)
+5: acc=0.30% acc_corr=0.30% avg#q_ae=1.14 med#q=1.0, avg_margin=-1.20 (n_ex=984, eps=2.000, 0.32s)
+6: acc=0.20% acc_corr=0.20% avg#q_ae=1.15 med#q=1.0, avg_margin=-1.20 (n_ex=984, eps=2.000, 0.35s)
+7: acc=0.20% acc_corr=0.20% avg#q_ae=1.15 med#q=1.0, avg_margin=-1.20 (n_ex=984, eps=2.000, 0.40s)
+8: acc=0.10% acc_corr=0.10% avg#q_ae=1.16 med#q=1.0, avg_margin=-1.21 (n_ex=984, eps=2.000, 0.44s)
+9: acc=0.00% acc_corr=0.00% avg#q_ae=1.17 med#q=1.0, avg_margin=-1.21 (n_ex=984, eps=2.000, 0.47s)
