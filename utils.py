@@ -40,6 +40,8 @@ def carlini_loss(output, targets):
   loss = logit_loss1[:, None] - logit_loss
   return loss
 
+
+
 def clip_grad_norms(param_groups, max_norm=math.inf):
     """
     Clips the norms for all param groups to max_norm and returns gradient norms before clipping

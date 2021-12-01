@@ -70,7 +70,13 @@ def get_options(args=None):
     parser.add_argument(
         "--dataset_size", type=int, default=10000, help="Dataset size for training",
     )
-    
+
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist",
+        help="Dataset type: mnist or cifar",
+    )
     parser.add_argument(
         "--hidden_size",
         type=int,
@@ -198,7 +204,10 @@ def get_options(args=None):
         opts.device = "cuda"
     else:
         opts.device = "cpu"
-
+    if opts.dataset == "mnist":
+        opts.d = 28 * 28
+    elif opts.dataset == "cifar":
+        opts.d = 32 * 32
     opts.run_name = "{}_{}".format("run", time.strftime("%Y%m%dT%H%M%S"))
     opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
     assert (

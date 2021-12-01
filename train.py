@@ -33,7 +33,11 @@ def train(opts):
   batch_size = opts.batch_size
   device = opts.device
   agents = init_adv_agents(opts)
-  mnist_dataset = datasets.MNIST(
+  if opts.dataset == "mnist":
+    dataset_obj = datasets.MNIST
+  elif opts.dataset == "cifar":
+    dataset_obj = datasets.CIFAR10
+  full_dataset = dataset_obj(
       opts.output_dir,
       train=False,
       download=True,
@@ -41,7 +45,7 @@ def train(opts):
         transforms.Compose([
           transforms.ToTensor(),
   ]))
-  train_dataset, val_dataset, test_dataset = random_split(mnist_dataset, (7000, 1000, 2000))
+  train_dataset, val_dataset, test_dataset = random_split(full_dataset, (7000, 1000, 2000))
   train_loader = DataLoader(
       train_dataset,
       batch_size=batch_size,
@@ -126,77 +130,95 @@ def train(opts):
     plt.imsave(opts.save_dir + '/adv_image3.png', np.array(adv_images[50]), cmap='gray')
     plt.imsave(opts.save_dir + '/orig_image3.png', np.array(orig_images[50]), cmap='gray')
   elif opts.eval_fsgm:
-    target_model.eval()
-    attack_accuracy = 0
-    assert batch_size == 1  # Needed for FGSM attack to work
-    for j, (orig_data, target) in enumerate(test_loader):
-      # Send the data and label to the device
-      orig_data, target = orig_data.to(device), target.to(device)
-      data = orig_data.clone()
-      output = target_model(data)
-      init_pred = output.argmax(1)
-      for i in range(opts.num_timesteps):
-        # Set requires_grad attribute of tensor. Important for Attack
-        data.requires_grad = True
-        # Forward pass the data through the model
-        output = target_model(data)
-
-        # Calculate the loss
-        if not opts.targetted:
-          T = target
-        else:
-          # Randomly sample a target other than true class
-          T = torch.ones(opts.batch_size, 10) / 9
-          T = T.scatter(1, target, 0)
-          T = T.multinomial()
-          print(T.shape)
-        loss = carlini_loss(output, T)
-
-        # Zero all existing gradients
-        target_model.zero_grad()
-
-        # Calculate gradients of model in backward pass
-        loss.backward()
-
-        # Collect datagrad
-        data_grad = data.grad.data
-
-        # Call FGSM Attack
-        perturbed_data = fgsm_attack(data, opts.alpha, data_grad)
-        clip_mask = torch.ones((data.size(2), data.size(3)), device=opts.device)
-        data = torch.clamp(perturbed_data, min=(orig_data - clip_mask * opts.epsilon), max=(orig_data + clip_mask * opts.epsilon))
-        data = torch.clip(data, min=0, max=1)
-      with torch.no_grad():
-        output2 = target_model(data)
-        attack_accuracy += (init_pred != output2.argmax(1)).float().item()
-      if j % 200 == 0 and j != 0:
-        print(attack_accuracy / j)
+    test_loader.batch_size = 1
+    eval_fgsm(opts, target_model, test_loader)
   elif opts.eval_plots:
     kernel_sizes = [4, 9]
     eps = [0.1, 0.15, 0.2, 0.25, 0.3]
+    attack_models = ['fgsm', 'rg', 'sg', 'rl']
+    for model in attack_models:
+      opts.model = model
+      kernel_sizes = [4, 9] if model != "fgsm" else [1]
+      for k in kernel_sizes:
+        attack_acc = []
+        for epsilon in eps:
+          opts.k = k
+          opts.epsilon = epsilon
+          opts.alpha = epsilon
+          kernel_size = int(k ** 0.5)
+          padded_size = int(math.ceil(((784 ** 0.5) / kernel_size)) * kernel_size)
+          num_timesteps = int((padded_size ** 2) / k)
+          opts.num_timesteps = num_timesteps
+          if model == "rl":
+            dir = f"outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
+            list_of_files = sorted(
+                os.listdir(dir), key=lambda s: int(s[8:12] + s[13:])
+            )
+            model_param_path = [dir + f"/{list_of_files[-1]}/agent_0.pt"]
+          else:
+            model_param_path = None
+          if model != "fgsm":
+            agents = init_adv_agents(opts, model_param_path)
 
-    for k in kernel_sizes:
-      attack_acc = []
-      for epsilon in eps:
-        opts.k = k
-        opts.epsilon = epsilon
-        opts.alpha = epsilon
+            r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+            acc = acc.mean().item()
+            print(f"k={k} eps={epsilon}: Avg queries={avg_queries.mean().item()} Attack Accuracy={acc}")
+          else:
+            test_loader.batch_size = 1
+            acc = eval_fgsm(opts, target_model, test_loader)
+            test_loader.batch_size = opts.batch_size
+          attack_acc.append(acc)
 
-        kernel_size = int(k ** 0.5)
-        padded_size = int(math.ceil(((784 ** 0.5) / kernel_size)) * kernel_size)
-        num_timesteps = int((padded_size ** 2) / k)
-        opts.num_timesteps = num_timesteps
-        dir = f"outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
-        list_of_files = sorted(
-            os.listdir(dir), key=lambda s: int(s[8:12] + s[13:])
-        )
-        agents = init_adv_agents(opts, [dir + f"/{list_of_files[-1]}/agent_0.pt"])
 
-        r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
-        print(f"k={k} eps={epsilon}: Avg queries={avg_queries.mean().item()} Attack Accuracy={acc.mean().item()}")
 
-        attack_acc.append(acc.mean().item())
+def eval_fgsm(opts, target_model, test_loader):
+  target_model.eval()
+  attack_accuracy = 0
+  device = opts.device
+  for j, (orig_data, target) in enumerate(test_loader):
+    # Send the data and label to the device
+    orig_data, target = orig_data.to(device), target.to(device)
+    data = orig_data.clone()
+    output = target_model(data)
+    init_pred = output.argmax(1)
+    for i in range(opts.num_timesteps):
+      # Set requires_grad attribute of tensor. Important for Attack
+      data.requires_grad = True
+      # Forward pass the data through the model
+      output = target_model(data)
 
+      # Calculate the loss
+      if not opts.targetted:
+        T = target
+      else:
+        # Randomly sample a target other than true class
+        T = torch.ones(opts.batch_size, 10) / 9
+        T = T.scatter(1, target, 0)
+        T = T.multinomial()
+        print(T.shape)
+      loss = carlini_loss(output, T)
+
+      # Zero all existing gradients
+      target_model.zero_grad()
+
+      # Calculate gradients of model in backward pass
+      loss.backward()
+
+      # Collect datagrad
+      data_grad = data.grad.data
+
+      # Call FGSM Attack
+      perturbed_data = fgsm_attack(data, opts.alpha, data_grad)
+      clip_mask = torch.ones((data.size(2), data.size(3)), device=opts.device)
+      data = torch.clamp(perturbed_data, min=(orig_data - clip_mask * opts.epsilon), max=(orig_data + clip_mask * opts.epsilon))
+      data = torch.clip(data, min=0, max=1)
+    with torch.no_grad():
+      output2 = target_model(data)
+      attack_accuracy += (init_pred != output2.argmax(1)).float().item()
+    if j % 200 == 0 and j != 0:
+      print(attack_accuracy / j)
+  return attack_accuracy / (j + 1)
+      
 
 
 def fgsm_attack(image, alpha, data_grad):
@@ -214,7 +236,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   rewards = []
   acc = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    x = x.to(torch.device(opts.device)).squeeze(1)
+    x = x.to(torch.device(opts.device))
     y = y.to(opts.device)
     if not opts.targetted:
       T = y
@@ -227,8 +249,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     log_p = env.deploy(agents, x, y, T)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
-      out = target_model(env.curr_images.unsqueeze(1))
-      out2 = target_model(x.unsqueeze(1))
+      out = target_model(env.curr_images)
+      out2 = target_model(x)
       attack_accuracy = torch.abs((out2.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
       target_model_loss = loss_fun(out, T)
       target_model_loss2 = loss_fun(out2, T)
@@ -293,7 +315,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   losses = []
   avg_queries = []
   for i, (x, y) in enumerate(tqdm(train_loader)):
-    x = x.to(torch.device(device)).squeeze(1)
+    x = x.to(torch.device(device))
     y = y.to(device)
     if not opts.targetted:
       T = y
@@ -306,8 +328,8 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     env.sample_type = "greedy"
     with torch.no_grad():
         env.deploy(agents, x, y, T)
-        out = target_model(env.curr_images.unsqueeze(1))
-        out1 = target_model(x.unsqueeze(1))
+        out = target_model(env.curr_images)
+        out1 = target_model(x)
         attack_accuracy = torch.abs((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
     target_model_loss = loss_fun(out, T)
     target_model_loss1 = loss_fun(out1, T)
