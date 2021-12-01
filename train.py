@@ -2,7 +2,7 @@ import math
 import torch.nn as nn
 import torch
 from collections import OrderedDict
-
+import tensorflow as tf
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
+import square_attack.utils as utils
 from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param
 from target_model import Net
 from env import adv_env
@@ -19,6 +20,8 @@ from options import get_options
 from torchvision import datasets, transforms
 import os
 from itertools import product
+from square_attack import models
+from square_attack.attack import square_attack_linf as square_attack
 import json
 
 
@@ -58,14 +61,28 @@ def train(opts):
     shuffle=True
   )
 
-  # Initialize the network
-  target_model = Net().to(device)
+  test_im, test_labels = next(iter(test_loader))
 
-  # Load the pretrained model
-  target_model.load_state_dict(torch.load(pretrained_model, map_location=device))
+  print(test_im.shape, test_labels.shape)
 
-  # Set the model in evaluation mode. In this case this is for the Dropout layers
-  target_model.eval()
+  if opts.dataset == 'mnist':
+    num_classes = 10
+
+  if opts.baseline == 'square_attack':
+    if opts.dataset == 'mnist':
+      sq_model = models.ModelTF('clp_mnist', batch_size, 0.5)
+    elif opts.dataset == 'cifar10':
+      sq_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
+  else:
+    # Initialize the network
+    target_model = Net().to(device)
+
+    # Load the pretrained model
+    target_model.load_state_dict(torch.load(pretrained_model, map_location=device))
+
+    # Set the model in evaluation mode. In this case this is for the Dropout layers
+    target_model.eval()
+
   if opts.tune:
     PARAM_GRID = list(product(
             [0.01, 0.001, 0.0001, 0.00001, 0.02, 0.002, 0.0002, 0.003, 0.0003, 0.00003],  # learning_rate
@@ -94,6 +111,25 @@ def train(opts):
       with open(SCOREFILE, "a") as f:
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
+  elif opts.baseline == 'square_attack':
+    print(test_im.shape)
+    logits_clean = sq_model.predict(test_im)
+    # print(logits_clean)
+    
+    # test_labels = np.reshape(test_labels,(100,))
+    # print(test_labels)
+    corr_classified = logits_clean.argmax(1) == test_labels.numpy()
+
+    # corr_classified = torch.from_numpy(corr_classified)
+    # print(test_labels)
+    # print(corr_classified)
+    y_target = utils.random_classes_except_current(test_labels, num_classes) if opts.targetted else test_labels
+    test_labels_onehot = utils.dense_to_onehot(y_target, num_classes)
+
+    #test_labels_onehot = torch.from_numpy(test_labels_onehot)
+    print(test_im.dtype)
+    n_queries, x_adv = square_attack(sq_model, test_im.numpy(), test_labels_onehot, corr_classified, opts.epsilon, opts.n_epochs,
+                                     0.05, False, 'cross_entropy')
 
   elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
@@ -112,6 +148,9 @@ def train(opts):
     plt.savefig(opts.log_dir + "/acc_plot.png")
     torch.save(torch.tensor(acc), opts.log_dir + "/attack_acc_logs.pt")
     save_agents_param(agents, opts)
+
+  
+
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
     r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
@@ -186,7 +225,7 @@ def train(opts):
         padded_size = int(math.ceil(((784 ** 0.5) / kernel_size)) * kernel_size)
         num_timesteps = int((padded_size ** 2) / k)
         opts.num_timesteps = num_timesteps
-        dir = f"outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
+        dir = f"/content/drive/MyDrive/AdvRL/outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
         list_of_files = sorted(
             os.listdir(dir), key=lambda s: int(s[8:12] + s[13:])
         )

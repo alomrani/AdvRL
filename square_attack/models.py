@@ -2,14 +2,14 @@ import torch
 import tensorflow as tf
 import numpy as np
 import math
-import utils
+import square_attack.utils as utils
 from torchvision import models as torch_models
 from torch.nn import DataParallel
-from madry_mnist.model import Model as madry_model_mnist
-from madry_cifar10.model import Model as madry_model_cifar10
-from logit_pairing.models import LeNet as lp_model_mnist, ResNet20_v2 as lp_model_cifar10
-from post_avg.postAveragedModels import pa_resnet110_config1 as post_avg_cifar10_resnet
-from post_avg.postAveragedModels import pa_resnet152_config1 as post_avg_imagenet_resnet
+from square_attack.madry_mnist.model import Model as madry_model_mnist
+from square_attack.madry_cifar10.model import Model as madry_model_cifar10
+from square_attack.logit_pairing.models import LeNet as lp_model_mnist, ResNet20_v2 as lp_model_cifar10
+from square_attack.post_avg.postAveragedModels import pa_resnet110_config1 as post_avg_cifar10_resnet
+from square_attack.post_avg.postAveragedModels import pa_resnet152_config1 as post_avg_imagenet_resnet
 
 
 class Model:
@@ -129,7 +129,7 @@ class ModelPT(Model):
 
 model_path_dict = {'madry_mnist_robust': 'madry_mnist/models/robust',
                    'madry_cifar10_robust': 'madry_cifar10/models/robust',
-                   'clp_mnist': 'logit_pairing/models/clp_mnist',
+                   'clp_mnist': '/content/gdrive/MyDrive/AdvRL/square_attack/logit_pairing/models/clp_mnist',
                    'lsq_mnist': 'logit_pairing/models/lsq_mnist',
                    'clp_cifar10': 'logit_pairing/models/clp_cifar10',
                    'lsq_cifar10': 'logit_pairing/models/lsq_cifar10',

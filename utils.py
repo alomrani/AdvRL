@@ -97,3 +97,4 @@ def plot_grad_flow(named_parameters):
     )
     plt.show()
     plt.savefig("grad.png")
+

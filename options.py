@@ -12,6 +12,13 @@ def get_options(args=None):
     # Data
 
     parser.add_argument(
+        '--dataset',
+        type=str,
+        default='mnist',
+        choices=['mnist', 'cifar10']
+    )
+
+    parser.add_argument(
         "--batch_size",
         type=int,
         default=100,
@@ -184,6 +191,8 @@ def get_options(args=None):
         default=0,
         help="Save checkpoint every n epochs (default 1), 0 to save no checkpoints",
     )
+
+    parser.add_argument('--baseline', type=str, default='square_attack', help='run baseline model')
 
 
     parser.add_argument(
