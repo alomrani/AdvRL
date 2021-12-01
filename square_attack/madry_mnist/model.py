@@ -16,28 +16,28 @@ class Model(object):
     self.x_image = tf.reshape(self.x_input, [-1, 28, 28, 1])
 
     # first convolutional layer
-    W_conv1 = self._weight_variable([5,5,1,32])
-    b_conv1 = self._bias_variable([32])
+    W_conv1 = self._weight_variable([5,5,1,10])
+    b_conv1 = self._bias_variable([10])
 
     h_conv1 = tf.nn.relu(self._conv2d(self.x_image, W_conv1) + b_conv1)
     h_pool1 = self._max_pool_2x2(h_conv1)
 
     # second convolutional layer
-    W_conv2 = self._weight_variable([5,5,32,64])
-    b_conv2 = self._bias_variable([64])
+    W_conv2 = self._weight_variable([5,5,10,20])
+    b_conv2 = self._bias_variable([20])
 
     h_conv2 = tf.nn.relu(self._conv2d(h_pool1, W_conv2) + b_conv2)
     h_pool2 = self._max_pool_2x2(h_conv2)
 
     # first fully connected layer
-    W_fc1 = self._weight_variable([7 * 7 * 64, 1024])
-    b_fc1 = self._bias_variable([1024])
+    W_fc1 = self._weight_variable([320, 50])
+    b_fc1 = self._bias_variable([50])
 
-    h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * 64])
+    h_pool2_flat = tf.reshape(h_pool2, [-1, 320])
     h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
 
     # output layer
-    W_fc2 = self._weight_variable([1024,10])
+    W_fc2 = self._weight_variable([50,10])
     b_fc2 = self._bias_variable([10])
 
     self.pre_softmax = tf.matmul(h_fc1, W_fc2) + b_fc2
