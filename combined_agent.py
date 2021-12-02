@@ -28,8 +28,8 @@ class box_agent(nn.Module):
   def sample(self, images, adv_images, timestep, mask, targets, target_model, loss):
     state = torch.cat(
         (
-            images[:, None, :, :],
-            adv_images[:, None, :, :],
+            images,
+            adv_images,
         ),
         dim=1
     )

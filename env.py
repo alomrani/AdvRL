@@ -34,15 +34,15 @@ class adv_env():
       self.mask = torch.scatter(self.mask, 1, selected_pixels, 1)
     if grad_estimate is None:
       with torch.no_grad():
-        x_right = self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.))
-        x_left = self.target_model(torch.clip(self.curr_images.unsqueeze(1) - selected_mask * self.delta, min=0., max=1.))
+        x_right = self.target_model(torch.clip(self.curr_images + selected_mask * self.delta, min=0., max=1.))
+        x_left = self.target_model(torch.clip(self.curr_images - selected_mask * self.delta, min=0., max=1.))
       T = self.targets if self.target_classes is None else self.target_classes
       direction = -1 if self.opts.targetted else 1
       loss_right = carlini_loss(x_right, T)
       loss_left = carlini_loss(x_left, T)
       grad_estimate = (loss_right - loss_left) / (2 * self.delta)
       self.curr_loss_est = (loss_right + loss_left) / 2.
-    self.curr_images = self.curr_images + direction * selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
+    self.curr_images = self.curr_images + direction * selected_mask * torch.sign(grad_estimate)[:, :, None, None] * self.alpha
     # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
     # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
@@ -59,17 +59,17 @@ class adv_env():
     # r_t = []
     self.device = images.device
     with torch.no_grad():
-      self.curr_loss_est = carlini_loss(self.target_model(self.curr_images.unsqueeze(1)), true_targets)
+      self.curr_loss_est = carlini_loss(self.target_model(self.curr_images), true_targets)
     for i in range(self.time_horizon):
-      if i != 0 and i % self.opts.reset_mask == 0:
-        self.mask = torch.zeros(self.mask.shape, device=self.device)
-        self.images = self.curr_images.clone()
+      # if i != 0 and i % self.opts.reset_mask == 0:
+      #   self.mask = torch.zeros(self.mask.shape, device=self.device)
+      #   self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel
       # r_t.append(r)
       self.timestep += 1
-    print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
+    # print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
     return log
 
   def call_agents(self, agents, timestep):
@@ -93,7 +93,7 @@ class adv_env():
       kernel_size = int(self.opts.k ** 0.5)
       l_p = torch.log_softmax(logits, dim=1)
       selected_block = self.sample(l_p.exp())
-      selected_mask = F.unfold(torch.zeros(self.images.shape, device=self.device).reshape(-1, 28, 28).unsqueeze(1), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
+      selected_mask = F.unfold(torch.zeros(self.images.shape, device=self.device), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
       selected_mask = selected_mask.scatter(1, selected_block[:, :, None].repeat(1, 1, kernel_size ** 2), 1)
       selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=self.padded_size, padding=self.padding)
       if self.padding != 0:
@@ -103,7 +103,7 @@ class adv_env():
       l_p = torch.log_softmax(logits, dim=1)
       selected = self.sample(l_p.exp())
       selected_mask = torch.zeros(self.opts.batch_size, 784, device=self.device).scatter(-1, selected, 1)
-      return selected_mask.reshape(-1, 28, 28), l_p.gather(1, selected).sum(-1)
+      return selected_mask.reshape(-1, self.d ** 0.5, self.d ** 0.5), l_p.gather(1, selected).sum(-1)
 
   def sample(self, prob):
     assert (prob == prob).all(), "Probs should not contain any nans"

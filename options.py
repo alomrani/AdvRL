@@ -49,25 +49,6 @@ def get_options(args=None):
     )
 
     parser.add_argument(
-        "--val_dataset",
-        type=str,
-        default="rl_datasets/rl_val.pt",
-        help="Dataset file to use for validation",
-    )
-    parser.add_argument(
-        "--test_dataset",
-        type=str,
-        default="rl_datasets/rl_test.pt",
-        help="Dataset file to use for testing",
-    )
-    parser.add_argument(
-        "--train_dataset",
-        type=str,
-        default="rl_datasets/rl_train.pt",
-        help="Dataset file to use for training",
-    )
-
-    parser.add_argument(
         "--dataset_size", type=int, default=10000, help="Dataset size for training",
     )
 
@@ -190,6 +171,8 @@ def get_options(args=None):
         default=0,
         help="Save checkpoint every n epochs (default 1), 0 to save no checkpoints",
     )
+
+    parser.add_argument('--baseline', type=str, default='None', help='run baseline model')
 
 
     parser.add_argument(
