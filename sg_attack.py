@@ -4,7 +4,7 @@ import torch.nn as nn
 class SGAttack(nn.Module):
     def __init__(self, d, opts) -> None:
         super(SGAttack, self).__init__()
-        self.indices = torch.arange(0, d, device=opts.device).reshape(28, 28)
+        self.indices = torch.arange(0, d, device=opts.device).reshape(int(d ** 0.5), int(d ** 0.5))
         self.k = opts.k
         self.d = d
         self.batch_size = opts.batch_size

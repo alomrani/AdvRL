@@ -13,8 +13,8 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import square_attack.utils as utils
-from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param
-from target_model import Net
+from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param, query_target_model
+from target_model import Net, CifarNet
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
 from options import get_options
@@ -75,7 +75,7 @@ def train(opts):
 
   test_im, test_labels = next(iter(test_loader))
 
-  print(test_im.shape, test_labels.shape)
+  # print(test_im.shape, test_labels)
 
   if opts.dataset == 'mnist':
     num_classes = 10
@@ -86,14 +86,17 @@ def train(opts):
     elif opts.dataset == 'cifar10':
       sq_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
   else:
-    # Initialize the network
-    target_model = Net().to(device)
+    if opts.dataset == 'mnist':
+      # Initialize the network
+      target_model = Net().to(device)
 
-    # Load the pretrained model
-    target_model.load_state_dict(torch.load(pretrained_model, map_location=device))
+      # Load the pretrained model
+      target_model.load_state_dict(torch.load(pretrained_model, map_location=device))
 
-    # Set the model in evaluation mode. In this case this is for the Dropout layers
-    target_model.eval()
+      # Set the model in evaluation mode. In this case this is for the Dropout layers
+      target_model.eval()
+    else:
+      target_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
 
   if opts.tune:
     PARAM_GRID = list(product(
@@ -143,7 +146,7 @@ def train(opts):
     n_queries, x_adv = square_attack(sq_model, test_im.numpy(), test_labels_onehot, corr_classified, opts.epsilon, opts.n_epochs,
                                      0.05, False, 'cross_entropy')
 
-  elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots):
+  elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots or opts.train_cifar_model):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
 
     plt.figure()
@@ -161,7 +164,42 @@ def train(opts):
     torch.save(torch.tensor(acc), opts.log_dir + "/attack_acc_logs.pt")
     save_agents_param(agents, opts)
 
-  
+  elif opts.train_cifar_model:
+    cifar_dataset = dataset_obj(
+      opts.output_dir,
+      train=True,
+      download=True,
+      transform=
+        transforms.Compose([
+          transforms.ToTensor(),
+    ]))
+    cifar_loader = DataLoader(
+      cifar_dataset,
+      batch_size=opts.batch_size,
+      shuffle=True
+    )
+    net = CifarNet(in_channels=3)
+    device = opts.device
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+
+    # Train vanilla model
+    net.train()
+    for epoch in range(1, opts.n_epochs):
+        train_loss = 0.0
+        for i, (x, y) in tqdm(enumerate(cifar_loader)):
+            x, y = x.to(device), y.to(device)
+            optimizer.zero_grad()
+            loss = loss_fn(net(x), y)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+        print(
+          "epoch: {}/{}, train loss: {:.3f}".format(
+              epoch, opts.n_epochs, train_loss / (i + 1)
+          )
+        )
+
 
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
@@ -265,7 +303,7 @@ def eval_fgsm(opts, target_model, test_loader):
       # Set requires_grad attribute of tensor. Important for Attack
       data.requires_grad = True
       # Forward pass the data through the model
-      output = target_model(data)
+      output = query_target_model(target_model, data, opts)
 
       # Calculate the loss
       if not opts.targetted:
@@ -328,8 +366,8 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     log_p, _ = env.deploy(agents, x, y, T)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
-      out = target_model(env.curr_images)
-      out2 = target_model(x)
+      out = query_target_model(target_model, env.curr_images, opts)
+      out2 = query_target_model(target_model, x, opts)
       direction = -1 if opts.targetted else 1
       attack_accuracy = direction * (out2.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum() / x.size(0)
       target_model_loss = loss_fun(out, T)
@@ -409,8 +447,8 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     env.sample_type = "greedy"
     with torch.no_grad():
         _, acc_evol = env.deploy(agents, x, y, T)
-        out = target_model(env.curr_images)
-        out1 = target_model(x)
+        out = query_target_model(target_model, env.curr_images, opts)
+        out1 = query_target_model(target_model, x, opts)
         direction = -1 if opts.targetted else 1
         attack_accuracy = direction * ((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
     avg_acc_evol += np.asarray(acc_evol)

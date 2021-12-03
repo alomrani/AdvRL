@@ -162,6 +162,12 @@ def get_options(args=None):
     )
 
     parser.add_argument(
+        "--train_cifar_model",
+        action="store_true",
+        help="Set this to true if you want to train a cifar model",
+    )
+
+    parser.add_argument(
         "--output_dir", default="outputs", help="Directory to write output models to"
     )
 
@@ -193,7 +199,4 @@ def get_options(args=None):
         opts.d = 32 * 32
     opts.run_name = "{}_{}".format("run", time.strftime("%Y%m%dT%H%M%S"))
     opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
-    assert (
-        opts.dataset_size % opts.batch_size == 0
-    ), "Epoch size must be integer multiple of batch size!"
     return opts

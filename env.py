@@ -2,8 +2,9 @@ import torch
 from torch.autograd import grad
 import torch.nn.functional as F
 import numpy as np
-from utils import carlini_loss
+from utils import carlini_loss, query_target_model
 import math
+
 
 class adv_env():
 
@@ -36,8 +37,8 @@ class adv_env():
     if grad_estimate is None:
       with torch.no_grad():
         base_images = self.curr_images if self.model != "rg" else self.images
-        x_right = self.target_model(torch.clip(base_images + selected_mask * self.delta, min=0., max=1.))
-        x_left = self.target_model(torch.clip(base_images - selected_mask * self.delta, min=0., max=1.))
+        x_right = query_target_model(self.target_model, torch.clip(base_images + selected_mask * self.delta, min=0., max=1.), self.opts)
+        x_left = query_target_model(self.target_model, torch.clip(base_images - selected_mask * self.delta, min=0., max=1.), self.opts)
       T = self.targets if self.target_classes is None else self.target_classes
       direction = -1 if self.opts.targetted else 1
       loss_right = carlini_loss(x_right, T)
@@ -48,7 +49,7 @@ class adv_env():
     # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
     # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
-    self.steps_needed += (direction * carlini_loss(self.target_model(self.curr_images), T) < 0).float()
+    self.steps_needed += (direction * carlini_loss(query_target_model(self.target_model, self.curr_images, self.opts), T) < 0).float()
     return 0
 
   def deploy(self, agents, images, true_targets, target_classes=None):
@@ -63,7 +64,7 @@ class adv_env():
     # r_t = []
     self.device = images.device
     with torch.no_grad():
-      self.curr_loss_est = carlini_loss(self.target_model(self.curr_images), true_targets)
+      self.curr_loss_est = carlini_loss(query_target_model(self.target_model, self.curr_images, self.opts), true_targets)
     for i in range(self.time_horizon):
       # if i != 0 and i % self.opts.reset_mask == 0:
       #   self.mask = torch.zeros(self.mask.shape, device=self.device)

@@ -9,7 +9,7 @@ import math
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Line2D
 import numpy as np
-
+import time
 
 def init_adv_agents(opts, agents_param_paths=[]):
   if opts.model == "combined_mal":
@@ -18,9 +18,9 @@ def init_adv_agents(opts, agents_param_paths=[]):
     agent = box_agent(opts).to(opts.device)
     agents = [agent]
   elif opts.model == "rg":
-    agents = [RGAttack(784, opts)]
+    agents = [RGAttack(opts.d, opts)]
   elif opts.model == "sg":
-    agents = [SGAttack(784, opts)]
+    agents = [SGAttack(opts.d, opts)]
   if opts.model not in  ["rg", "sg"]:
     for i, agent_param_path in enumerate(agents_param_paths):
       agent_param = torch.load(agent_param_path, map_location=opts.device)
@@ -99,4 +99,15 @@ def plot_grad_flow(named_parameters):
     )
     plt.show()
     plt.savefig("grad.png")
+
+def query_target_model(target_model, x, opts):
+  start = time.time()
+  if opts.dataset == "mnist":
+    out = target_model(x)
+    print(time.time() - start)
+    return out
+  else:
+    out = torch.tensor(target_model.predict(x * 255.)).to(opts.device)
+    print(time.time() - start)
+    return out
 
