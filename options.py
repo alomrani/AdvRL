@@ -49,28 +49,15 @@ def get_options(args=None):
     )
 
     parser.add_argument(
-        "--val_dataset",
-        type=str,
-        default="rl_datasets/rl_val.pt",
-        help="Dataset file to use for validation",
-    )
-    parser.add_argument(
-        "--test_dataset",
-        type=str,
-        default="rl_datasets/rl_test.pt",
-        help="Dataset file to use for testing",
-    )
-    parser.add_argument(
-        "--train_dataset",
-        type=str,
-        default="rl_datasets/rl_train.pt",
-        help="Dataset file to use for training",
+        "--dataset_size", type=int, default=10000, help="Dataset size for training",
     )
 
     parser.add_argument(
-        "--dataset_size", type=int, default=10000, help="Dataset size for training",
+        "--dataset",
+        type=str,
+        default="mnist",
+        help="Dataset type: mnist or cifar",
     )
-    
     parser.add_argument(
         "--hidden_size",
         type=int,
@@ -172,6 +159,12 @@ def get_options(args=None):
     )
 
     parser.add_argument(
+        "--train_cifar_model",
+        action="store_true",
+        help="Set this to true if you want to train a cifar model",
+    )
+
+    parser.add_argument(
         "--output_dir", default="outputs", help="Directory to write output models to"
     )
     parser.add_argument(
@@ -183,6 +176,8 @@ def get_options(args=None):
         default=0,
         help="Save checkpoint every n epochs (default 1), 0 to save no checkpoints",
     )
+
+    parser.add_argument('--baseline', type=str, default='None', help='run baseline model')
 
 
     parser.add_argument(
@@ -207,4 +202,8 @@ def get_options(args=None):
     assert (
         opts.dataset_size % opts.batch_size == 0
     ), "Epoch size must be integer multiple of batch size!"
+    if opts.dataset == "mnist":
+        opts.d = 28 * 28
+    elif opts.dataset == "cifar":
+        opts.d = 32 * 32
     return opts

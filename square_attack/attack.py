@@ -1,10 +1,10 @@
 import argparse
 import time
 import numpy as np
-import data
-import models
+import square_attack.data
+import square_attack.models
 import os
-import utils
+import square_attack.utils
 from datetime import datetime
 np.set_printoptions(precision=5, suppress=True)
 
@@ -196,7 +196,7 @@ def square_attack_l2(model, x, y, corr_classified, eps, n_iters, p_init, metrics
     return n_queries, x_best
 
 
-def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, metrics_path, targeted, loss_type):
+def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, targeted, loss_type):
     """ The Linf square attack """
     np.random.seed(0)  # important to leave it here as well
     min_val, max_val = 0, 1 if x.max() <= 1 else 255
@@ -208,7 +208,6 @@ def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, metri
     # [c, 1, w], i.e. vertical stripes work best for untargeted attacks
     init_delta = np.random.choice([-eps, eps], size=[x.shape[0], c, 1, w])
     x_best = np.clip(x + init_delta, min_val, max_val)
-
     logits = model.predict(x_best)
     loss_min = model.loss(y, logits, targeted, loss_type=loss_type)
     margin_min = model.loss(y, logits, targeted, loss_type='margin_loss')
@@ -253,12 +252,12 @@ def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, metri
         mean_nq, mean_nq_ae, median_nq_ae = np.mean(n_queries), np.mean(n_queries[margin_min <= 0]), np.median(n_queries[margin_min <= 0])
         avg_margin_min = np.mean(margin_min)
         time_total = time.time() - time_start
-        log.print('{}: acc={:.2%} acc_corr={:.2%} avg#q_ae={:.2f} med#q={:.1f}, avg_margin={:.2f} (n_ex={}, eps={:.3f}, {:.2f}s)'.
+        print('{}: acc={:.2%} acc_corr={:.2%} avg#q_ae={:.2f} med#q={:.1f}, avg_margin={:.2f} (n_ex={}, eps={:.3f}, {:.2f}s)'.
             format(i_iter+1, acc, acc_corr, mean_nq_ae, median_nq_ae, avg_margin_min, x.shape[0], eps, time_total))
 
-        metrics[i_iter] = [acc, acc_corr, mean_nq, mean_nq_ae, median_nq_ae, margin_min.mean(), time_total]
-        if (i_iter <= 500 and i_iter % 20 == 0) or (i_iter > 100 and i_iter % 50 == 0) or i_iter + 1 == n_iters or acc == 0:
-            np.save(metrics_path, metrics)
+        # metrics[i_iter] = [acc, acc_corr, mean_nq, mean_nq_ae, median_nq_ae, margin_min.mean(), time_total]
+        # if (i_iter <= 500 and i_iter % 20 == 0) or (i_iter > 100 and i_iter % 50 == 0) or i_iter + 1 == n_iters or acc == 0:
+        #     np.save(metrics_path, metrics)
         if acc == 0:
             break
 

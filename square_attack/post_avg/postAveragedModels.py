@@ -3,8 +3,8 @@
 import robustml
 import numpy as np
 from collections import OrderedDict
-import post_avg.PADefense as padef
-import post_avg.resnetSmall as rnsmall
+import square_attack.post_avg.PADefense as padef
+import square_attack.post_avg.resnetSmall as rnsmall
 
 import torch
 import torchvision.models as mdl
