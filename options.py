@@ -129,6 +129,12 @@ def get_options(args=None):
     )
 
     parser.add_argument(
+        "--targetted",
+        action="store_true",
+        help="Set this value to do a targetted attack.",
+    )
+
+    parser.add_argument(
         "--eval_only",
         action="store_true",
         help="Set this value to only evaluate attack model",
@@ -137,6 +143,12 @@ def get_options(args=None):
         "--eval_fsgm",
         action="store_true",
         help="Set this value to only evaluate gsgm attack",
+    )
+
+    parser.add_argument(
+        "--eval_plots",
+        action="store_true",
+        help="Generate eval plots for all attack strategies",
     )
 
 

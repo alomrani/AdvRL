@@ -1,3 +1,4 @@
+import math
 import torch.nn as nn
 import torch
 from collections import OrderedDict
@@ -80,7 +81,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.alpha}_{opts.k}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.alpha}_{opts.k}_{opts.targetted}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -96,7 +97,7 @@ def train(opts):
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item(), avg_queries)))}\n')
 
 
-  elif not (opts.eval_only or opts.eval_fsgm):
+  elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
 
     plt.figure()
@@ -115,7 +116,7 @@ def train(opts):
     save_agents_param(agents, opts)
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
-    r, loss, acc, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+    r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.log_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -143,7 +144,15 @@ def train(opts):
         output = target_model(data)
 
         # Calculate the loss
-        loss = carlini_loss(output, target)
+        if not opts.targetted:
+          T = target
+        else:
+          # Randomly sample a target other than true class
+          T = torch.ones(opts.batch_size, 10, device=opts.device) / 9
+          T = T.scatter(1, target, 0)
+          T = T.multinomial()
+          print(T.shape)
+        loss = carlini_loss(output, T)
 
         # Zero all existing gradients
         target_model.zero_grad()
@@ -164,6 +173,32 @@ def train(opts):
         attack_accuracy += (init_pred != output2.argmax(1)).float().item()
       if j % 200 == 0 and j != 0:
         print(attack_accuracy / j)
+  elif opts.eval_plots:
+    kernel_sizes = [4, 9]
+    eps = [0.1, 0.15, 0.2, 0.25, 0.3]
+
+    for k in kernel_sizes:
+      attack_acc = []
+      for epsilon in eps:
+        opts.k = k
+        opts.epsilon = epsilon
+        opts.alpha = epsilon
+
+        kernel_size = int(k ** 0.5)
+        padded_size = int(math.ceil(((784 ** 0.5) / kernel_size)) * kernel_size)
+        num_timesteps = int((padded_size ** 2) / k)
+        opts.num_timesteps = num_timesteps
+        dir = f"outputs/{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{int(num_timesteps / 2)}"
+        list_of_files = sorted(
+            os.listdir(dir), key=lambda s: int(s[8:12] + s[13:])
+        )
+        agents = init_adv_agents(opts, [dir + f"/{list_of_files[-1]}/agent_0.pt"])
+
+        r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+        print(f"k={k} eps={epsilon}: Avg queries={avg_queries.mean().item()} Attack Accuracy={acc.mean().item()}")
+
+        attack_acc.append(acc.mean().item())
+
 
 
 def fgsm_attack(image, alpha, data_grad):
@@ -180,19 +215,26 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   loss_fun = carlini_loss
   rewards = []
   acc = []
+  direction = -1 if opts.targetted else 1
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(opts.device)).squeeze(1)
     y = y.to(opts.device)
+    if not opts.targetted:
+      T = y
+    else:
+      # Randomly sample a target other than true class
+      T = torch.ones(opts.batch_size, 10, device=opts.device) / 9
+      T = T.scatter(1, y[:, None], 0)
+      T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
-    log_p = env.deploy(agents, x, y)
-
+    log_p = env.deploy(agents, x, y, T)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images.unsqueeze(1))
       out2 = target_model(x.unsqueeze(1))
-      attack_accuracy = torch.abs((out2.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
-      target_model_loss = loss_fun(out, y)
-      target_model_loss2 = loss_fun(out2, y)
+      attack_accuracy = torch.abs((out2.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
+      target_model_loss = direction * loss_fun(out, T)
+      target_model_loss2 = direction * loss_fun(out2, T)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
     r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * env.steps_needed.squeeze(1) / opts.num_timesteps
     # print(torch.softmax(out, dim=1))
@@ -251,30 +293,39 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   rewards = []
   acc = []
   losses = []
-  avg_queries = 0
+  avg_queries = []
+  direction = -1 if opts.targetted else 1
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device)).squeeze(1)
     y = y.to(device)
+    if not opts.targetted:
+      T = y
+    else:
+      # Randomly sample a target other than true class
+      T = torch.ones(opts.batch_size, 10, device=opts.device) / 9.
+      T = T.scatter(1, y[:, None], 0)
+      T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
     env.sample_type = "greedy"
     with torch.no_grad():
-        env.deploy(agents, x, y)
+        env.deploy(agents, x, y, T)
         out = target_model(env.curr_images.unsqueeze(1))
         out1 = target_model(x.unsqueeze(1))
-        attack_accuracy = torch.abs((out1.argmax(1) == y).float().sum() - (out.argmax(1) == y).float().sum()) / x.size(0)
-    target_model_loss = loss_fun(out, y)
-    target_model_loss1 = loss_fun(out1, y)
+        attack_accuracy = torch.abs((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
+    target_model_loss = direction * loss_fun(out, T)
+    target_model_loss1 = direction * loss_fun(out1, T)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = 0
-    r = -(target_model_loss - target_model_loss1) + opts.gamma * env.steps_needed.squeeze(1) / opts.num_timesteps
+    r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
+    # print(-r.mean().item())
     # print(torch.softmax(out, dim=1))
     # print(f"Target Model Accuracy: {accuracy}")
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
-    avg_queries += env.steps_needed.squeeze(1).mean().item()
-  #print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), env.curr_images, x, avg_queries / (i + 1) 
+    avg_queries.append((env.steps_needed * (env.steps_needed != time_horizon).float()).sum() / (env.steps_needed != time_horizon).float().sum())
+    print(f"Attack Accuracy: {attack_accuracy}")
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), torch.tensor(avg_queries), env.curr_images, x
 
 
 

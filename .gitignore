@@ -2,3 +2,4 @@ __pycache__/*
 MNIST/*
 *.csv
 outputs/*
+logs/*

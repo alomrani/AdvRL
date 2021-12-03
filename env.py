@@ -27,6 +27,7 @@ class adv_env():
     self.curr_grad_neg = 0.
     self.delta = opts.delta
     self.curr_loss_est = None
+    self.target_classes = None
     self.timestep = 0
   def update(self, selected_pixels, selected_mask, grad_estimate=None):
     if self.opts.model == "fda_mal":
@@ -35,21 +36,23 @@ class adv_env():
       with torch.no_grad():
         x_right = self.target_model(torch.clip(self.curr_images.unsqueeze(1) + selected_mask * self.delta, min=0., max=1.))
         x_left = self.target_model(torch.clip(self.curr_images.unsqueeze(1) - selected_mask * self.delta, min=0., max=1.))
-
-      loss_right = carlini_loss(x_right, self.targets)
-      loss_left = carlini_loss(x_left, self.targets)
+      T = self.targets if self.target_classes is None else self.target_classes
+      direction = -1 if self.opts.targetted else 1
+      loss_right = carlini_loss(x_right, T)
+      loss_left = carlini_loss(x_left, T)
       grad_estimate = (loss_right - loss_left) / (2 * self.delta)
       self.curr_loss_est = (loss_right + loss_left) / 2.
-    self.curr_images = self.curr_images + selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
+    self.curr_images = self.curr_images + direction * selected_mask.squeeze(1) * torch.sign(grad_estimate).unsqueeze(2) * self.alpha
     # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
     # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
-    self.steps_needed += (self.curr_loss_est < 0).float()
+    self.steps_needed += (direction * self.curr_loss_est < 0).float()
     return 0
 
-  def deploy(self, agents, images, true_targets):
+  def deploy(self, agents, images, true_targets, target_classes=None):
     self.curr_images = images.clone()
     self.targets = true_targets
+    self.target_classes = target_classes
     self.images = images
     self.d = self.opts.d
     log = 0
@@ -66,22 +69,13 @@ class adv_env():
       log += lp_pixel
       # r_t.append(r)
       self.timestep += 1
+    print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
     return log
 
   def call_agents(self, agents, timestep):
     selected_grad = None
     lp_grad = torch.tensor([[0.]], device=self.device)
-    if self.opts.model == "combined_mal":
-      box_agent = agents[0]
-      grad_agent = agents[1]
-      out_pixel = box_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask)
-      selected_pixels, selected_mask, lp_pixel = self.get_selected_pixels(out_pixel, self.mask)
-      out_grad_est = grad_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask, selected_pixels)
-      lp_grad = torch.log_softmax(out_grad_est, dim=1)
-      selected_grad = self.sample(lp_grad.exp())
-      lp_grad = lp_grad.gather(1, selected_grad)
-      selected_grad = torch.cat((torch.ones(self.images.size(0), 1), torch.ones(self.images.size(0), 1) * -1), dim=1).to(self.device).gather(1, selected_grad)
-    elif self.opts.model == "fda_mal":
+    if self.opts.model == "fda_mal":
       box_agent = agents[0]
       out_pixel = box_agent.sample(self.images, self.curr_images, timestep / self.time_horizon, self.mask, self.targets, self.target_model, self.curr_loss_est)
       selected_pixels, selected_mask, lp_pixel = self.get_selected_pixels(out_pixel, self.mask)
@@ -95,7 +89,7 @@ class adv_env():
   def get_selected_pixels(self, logits, mask):
     if self.opts.mask:
       logits[mask.bool()] = -1e6
-    if self.opts.model == "combined_mal" or self.opts.model == "fda_mal":
+    if self.opts.model == "fda_mal":
       kernel_size = int(self.opts.k ** 0.5)
       l_p = torch.log_softmax(logits, dim=1)
       selected_block = self.sample(l_p.exp())

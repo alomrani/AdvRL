@@ -35,7 +35,7 @@ def save_agents_param(agents, opts):
 def carlini_loss(output, targets):
   one_hot_targets = F.one_hot(targets.long(), num_classes=10)
   logit_loss = output.gather(1, targets[:, None])
-  output[one_hot_targets.bool()] = -1e8
+  output = output + one_hot_targets * -1e8
   logit_loss1, _ = output.max(1)
   loss = logit_loss1[:, None] - logit_loss
   return loss
