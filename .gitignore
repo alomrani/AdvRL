@@ -3,3 +3,6 @@ MNIST/*
 *.csv
 outputs/*
 logs/*
+*.pyc
+*.png
+*.pkl
