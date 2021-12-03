@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import math
 
 class SGAttack(nn.Module):
     def __init__(self, d, opts) -> None:
