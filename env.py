@@ -21,6 +21,7 @@ class adv_env():
     self.time_horizon = opts.num_timesteps
     self.device = opts.device
     self.opts = opts
+    self.model = opts.model
     self.sample_type = "sample"
     self.curr_grad_zero = 0.
     self.curr_grad_pos = 0.
@@ -34,8 +35,9 @@ class adv_env():
       self.mask = torch.scatter(self.mask, 1, selected_pixels, 1)
     if grad_estimate is None:
       with torch.no_grad():
-        x_right = self.target_model(torch.clip(self.curr_images + selected_mask * self.delta, min=0., max=1.))
-        x_left = self.target_model(torch.clip(self.curr_images - selected_mask * self.delta, min=0., max=1.))
+        base_images = self.curr_images if self.model != "rg" else self.images
+        x_right = self.target_model(torch.clip(base_images + selected_mask * self.delta, min=0., max=1.))
+        x_left = self.target_model(torch.clip(base_images - selected_mask * self.delta, min=0., max=1.))
       T = self.targets if self.target_classes is None else self.target_classes
       direction = -1 if self.opts.targetted else 1
       loss_right = carlini_loss(x_right, T)
@@ -46,7 +48,7 @@ class adv_env():
     # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
     # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
-    self.steps_needed += (direction * self.curr_loss_est < 0).float()
+    self.steps_needed += (direction * carlini_loss(self.target_model(self.curr_images), T) < 0).float()
     return 0
 
   def deploy(self, agents, images, true_targets, target_classes=None):
@@ -56,6 +58,8 @@ class adv_env():
     self.images = images
     self.d = self.opts.d
     log = 0
+    avg_acc_evolution = []
+    direction = -1 if self.opts.targetted else 1
     # r_t = []
     self.device = images.device
     with torch.no_grad():
@@ -67,10 +71,11 @@ class adv_env():
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel
+      avg_acc_evolution.append((direction * self.curr_loss_est < 0).float().mean())
       # r_t.append(r)
       self.timestep += 1
     # print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
-    return log
+    return log, avg_acc_evolution
 
   def call_agents(self, agents, timestep):
     selected_grad = None

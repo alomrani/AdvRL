@@ -165,7 +165,7 @@ def train(opts):
 
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
-    r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+    r, loss, acc, avg_queries, acc_evol, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
     plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
@@ -180,10 +180,12 @@ def train(opts):
     test_loader.batch_size = 1
     eval_fgsm(opts, target_model, test_loader)
   elif opts.eval_plots:
+    table = os.path.expanduser(f"./datatable_{opts.dataset.upper()}_{opts.targetted}.csv")
     if not os.path.isfile(f"lineplot_{opts.dataset.upper()}_{opts.targetted}.pkl"):
+      f = open(table, "a")
       kernel_sizes = [4, 9]
-      eps = [0.1]
-      attack_models = ["fgsm"]
+      eps = [0.1, 0.15, 0.2, 0.25, 0.3]
+      attack_models = ["fgsm", "rg", "sg", "rl"]
       data_attack_acc = []
       data_eps = []
       data_model = []
@@ -191,6 +193,7 @@ def train(opts):
         opts.model = model
         kernel_sizes = [4, 9] if model != "fgsm" else [1]
         for k in kernel_sizes:
+          f.write(f'{",".join((f"{model}-{k}",))}\n\n')
           for epsilon in eps:
             print(f"Model: {model}, k: {k}, eps: {epsilon}")
             opts.k = k
@@ -211,9 +214,12 @@ def train(opts):
               model_param_path = None
             if model != "fgsm":
               agents = init_adv_agents(opts, model_param_path)
-              r, loss, acc, avg_queries, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
+              r, loss, acc, avg_queries, acc_evol, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
               acc = acc.mean().item()
-              print(f"k={k} eps={epsilon}: Avg queries={2 * avg_queries.mean().item()} Attack Accuracy={acc}")
+              num_q = 2 * avg_queries.mean().item()
+              print(f"k={k} eps={epsilon}: Avg queries={num_q} Attack Accuracy={acc}")
+
+              f.write(f'{",".join(map(str, (epsilon, num_q, acc, acc / (num_q / num_timesteps * 2))))}\n')
               data_attack_acc.append(round(acc, 2))
               data_model.append(f"{model}-{k}")
             else:
@@ -225,11 +231,11 @@ def train(opts):
               data_attack_acc.append(round(acc, 2))
               data_model.append(f"FGSM")
             data_eps.append(str(epsilon))
-
-      f = plt.figure()
-      f.tight_layout()
+      f.close()
       data_pd = pd.DataFrame({"Attack Accuracy": data_attack_acc, "Epsilon": data_eps, "Attack Model": data_model})
       data_pd.to_pickle(f"lineplot_{opts.dataset.upper()}_{opts.targetted}.pkl")
+    f = plt.figure()
+    f.tight_layout()
     data_pd = pd.read_pickle(f"lineplot_{opts.dataset.upper()}_{opts.targetted}.pkl")
     sns.set_style(style='darkgrid')
     plt.title(f"{opts.dataset.upper()} {'Targeted' if opts.targetted else 'Untargeted'}", fontsize=30)
@@ -319,7 +325,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       T = T.scatter(1, y[:, None], 0)
       T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
-    log_p = env.deploy(agents, x, y, T)
+    log_p, _ = env.deploy(agents, x, y, T)
     # print(f"Mean Reward: {-r.mean()}")
     with torch.no_grad():
       out = target_model(env.curr_images)
@@ -388,6 +394,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   acc = []
   losses = []
   avg_queries = []
+  avg_acc_evol = 0
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device))
     y = y.to(device)
@@ -401,11 +408,12 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     env = adv_env(target_model, opts)
     env.sample_type = "greedy"
     with torch.no_grad():
-        env.deploy(agents, x, y, T)
+        _, acc_evol = env.deploy(agents, x, y, T)
         out = target_model(env.curr_images)
         out1 = target_model(x)
         direction = -1 if opts.targetted else 1
-        attack_accuracy = direction * (out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum() / x.size(0)
+        attack_accuracy = direction * ((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
+    avg_acc_evol += np.asarray(acc_evol)
     target_model_loss = loss_fun(out, T)
     target_model_loss1 = loss_fun(out1, T)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
@@ -417,9 +425,9 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
-    avg_queries.append((env.steps_needed * (env.steps_needed != time_horizon).float()).sum() / (env.steps_needed != time_horizon).float().sum())
+    avg_queries.append((env.steps_needed * (env.steps_needed != time_horizon).float() * (env.steps_needed != 0).float()).sum() / ((env.steps_needed != time_horizon).float() * (env.steps_needed != 0).float()).sum())
     # print(f"Attack Accuracy: {attack_accuracy}")
-  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), torch.tensor(avg_queries), env.curr_images, x
+  return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), torch.tensor(avg_queries), avg_acc_evol / (i + 1), env.curr_images, x
 
 
 
