@@ -101,13 +101,10 @@ def plot_grad_flow(named_parameters):
     plt.savefig("grad.png")
 
 def query_target_model(target_model, x, opts):
-  start = time.time()
   if opts.dataset == "mnist":
     out = target_model(x)
-    print(time.time() - start)
     return out
   else:
-    out = torch.tensor(target_model.predict(x * 255.)).to(opts.device)
-    print(time.time() - start)
+    out = target_model(x)
     return out
 

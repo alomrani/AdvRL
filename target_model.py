@@ -20,6 +20,8 @@ class Net(nn.Module):
         return x
 
 
+
+
 class CifarNet(nn.Module):
     """Basic CNN architecture."""
 
@@ -37,3 +39,52 @@ class CifarNet(nn.Module):
         x = x.view(-1, 128 * 3 * 3)
         x = self.fc(x)
         return x
+
+class CifarNet2(nn.Module):
+    def __init__(self):
+        super(CifarNet2, self).__init__()
+        
+        self.conv_layer = nn.Sequential(
+            nn.Conv2d(3,96,3), # 96*30*30
+            nn.GroupNorm(32, 96),
+            nn.ELU(),
+            
+            nn.Dropout2d(0.2),
+            
+            nn.Conv2d(96, 96, 3), # 96*28*28
+            nn.GroupNorm(32, 96),
+            nn.ELU(),
+            
+            nn.Conv2d(96, 96, 3), # 96*26*26
+            nn.GroupNorm(32, 96),
+            nn.ELU(),
+            
+            nn.Dropout2d(0.5),
+            
+            nn.Conv2d(96, 192, 3), # 192*24*24
+            nn.GroupNorm(32, 192),
+            nn.ELU(),
+            
+            nn.Conv2d(192, 192, 3), # 192*22*22
+            nn.GroupNorm(32, 192),
+            nn.ELU(),
+           
+            nn.Dropout2d(0.5),
+            
+            nn.Conv2d(192, 256, 3), # 256*20*20
+            nn.GroupNorm(32, 256),
+            nn.ELU(),
+            
+            nn.Conv2d(256, 256, 1), # 256*20*20
+            nn.GroupNorm(32, 256),
+            nn.ELU(),
+            
+            nn.Conv2d(256, 10, 1), # 10*20*20
+            nn.AvgPool2d(20) # 10*1*1
+        )
+
+    def forward(self,x):
+        out = self.conv_layer(x)
+        out = out.view(-1,10)
+
+        return out
