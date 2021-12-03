@@ -69,10 +69,10 @@ class adv_env():
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel
-      avg_acc_evolution.append((direction * self.curr_loss_est < 0).float().mean())
+      avg_acc_evolution.append((direction * self.curr_loss_est < 0).float().mean().item())
       # r_t.append(r)
       self.timestep += 1
-    # print((self.steps_needed * (self.steps_needed != self.time_horizon)).sum() / (self.steps_needed != self.time_horizon).sum())
+    print((self.steps_needed * (self.steps_needed != self.time_horizon) * (self.steps_needed != 0)).sum() / ((self.steps_needed != self.time_horizon) * (self.steps_needed != self.time_horizon)).sum())
     return log, avg_acc_evolution
 
   def call_agents(self, agents, timestep):
