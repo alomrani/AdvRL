@@ -1,41 +1,23 @@
 import math
 from unicodedata import decimal
 import torch
-<<<<<<< HEAD
-from collections import OrderedDict
-# import tensorflow as tf
-import torch.utils.model_zoo as model_zoo
-import torch.nn.functional as F
-=======
->>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-<<<<<<< HEAD
-#import square_attack.utils as utils
-from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param, query_target_model
-from target_model import Net, CifarNet
-=======
 # import square_attack.utils as utils
 from utils import carlini_loss, init_adv_agents, save_agents_param, query_target_model
 from target_model import Net, CifarNet, CifarNet2
->>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
 from options import get_options
 from torchvision import datasets, transforms
 import os
 from itertools import product
-<<<<<<< HEAD
-#from square_attack import models
-#from square_attack.attack import square_attack_linf as square_attack
-=======
 # from square_attack import models
 # from square_attack.attack import square_attack_linf as square_attack
->>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 import json
 import seaborn as sns
 import pandas as pd
@@ -150,7 +132,7 @@ def train(opts):
       r, acc = train_epoch(agents, target_model, train_loader, opts)
       eval_r, eval_loss, eval_acc, *_ = eval(agents, target_model, val_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item(), avg_queries)))}\n')
+        f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
 
   # elif opts.baseline == 'square_attack':
   #   print(test_im.shape)
