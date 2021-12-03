@@ -66,9 +66,6 @@ class adv_env():
     with torch.no_grad():
       self.curr_loss_est = carlini_loss(query_target_model(self.target_model, self.curr_images, self.opts), true_targets)
     for i in range(self.time_horizon):
-      # if i != 0 and i % self.opts.reset_mask == 0:
-      #   self.mask = torch.zeros(self.mask.shape, device=self.device)
-      #   self.images = self.curr_images.clone()
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel

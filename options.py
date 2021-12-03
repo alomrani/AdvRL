@@ -38,7 +38,7 @@ def get_options(args=None):
     parser.add_argument(
         "--reset_mask",
         type=int,
-        default=1000,
+        default=10000,
         help="Reset mask every theta iterations (used for iterative attacks)",
     )
     parser.add_argument(
@@ -78,6 +78,9 @@ def get_options(args=None):
         "--delta", type=float, default=0.01, help="Learning rate decay per epoch"
     )
     parser.add_argument(
+        "--alpha", type=float, default=0.01, help="Alpha for iterative attacks"
+    )
+    parser.add_argument(
         "--k", type=int, default=4, help="k for random grouping"
     )
     parser.add_argument(
@@ -109,12 +112,6 @@ def get_options(args=None):
         "--gamma",
         type=float,
         default=0.0,
-        help="hyperparameter to control perturbation",
-    )
-    parser.add_argument(
-        "--alpha",
-        type=float,
-        default=0.01,
         help="hyperparameter to control perturbation",
     )
 
@@ -170,7 +167,9 @@ def get_options(args=None):
     parser.add_argument(
         "--output_dir", default="outputs", help="Directory to write output models to"
     )
-
+    parser.add_argument(
+        "--log_dir", default="logs", help="Directory to write train/eval logs to"
+    )
     parser.add_argument(
         "--checkpoint_epochs",
         type=int,
@@ -193,10 +192,18 @@ def get_options(args=None):
         opts.device = "cuda"
     else:
         opts.device = "cpu"
+    run_time = time.strftime("%Y%m%dT%H%M%S")
+
+    targetted_flag = "t" if opts.targetted else "nt"
+    opts.run_name = f"{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{opts.num_timesteps}_{targetted_flag}/run_{run_time}"
+    
+    opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
+    opts.log_dir = os.path.join(opts.log_dir, opts.run_name)
+    assert (
+        opts.dataset_size % opts.batch_size == 0
+    ), "Epoch size must be integer multiple of batch size!"
     if opts.dataset == "mnist":
         opts.d = 28 * 28
     elif opts.dataset == "cifar":
         opts.d = 32 * 32
-    opts.run_name = "{}_{}".format("run", time.strftime("%Y%m%dT%H%M%S"))
-    opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
     return opts

@@ -1,23 +1,41 @@
 import math
 from unicodedata import decimal
 import torch
+<<<<<<< HEAD
+from collections import OrderedDict
+# import tensorflow as tf
+import torch.utils.model_zoo as model_zoo
+import torch.nn.functional as F
+=======
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
+<<<<<<< HEAD
+#import square_attack.utils as utils
+from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param, query_target_model
+from target_model import Net, CifarNet
+=======
 # import square_attack.utils as utils
 from utils import carlini_loss, init_adv_agents, save_agents_param, query_target_model
 from target_model import Net, CifarNet, CifarNet2
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
 from options import get_options
 from torchvision import datasets, transforms
 import os
 from itertools import product
+<<<<<<< HEAD
+#from square_attack import models
+#from square_attack.attack import square_attack_linf as square_attack
+=======
 # from square_attack import models
 # from square_attack.attack import square_attack_linf as square_attack
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 import json
 import seaborn as sns
 import pandas as pd
@@ -31,6 +49,8 @@ def train(opts):
     # Save arguments so exact configuration can always be found
     with open(os.path.join(opts.save_dir, "args.json"), "w") as f:
         json.dump(vars(opts), f, indent=True)
+  if not os.path.exists(opts.log_dir):
+    os.makedirs(opts.log_dir)
   pretrained_model_mnist = "./target_model_param/lenet_mnist_model.pth"
   pretrained_model_cifar = "./target_model_param/cifar_model.pth"
   batch_size = opts.batch_size
@@ -117,7 +137,7 @@ def train(opts):
     # this worker's array index. Assumes slurm array job is zero-indexed
     # defaults to zero if not running under SLURM
     this_worker = int(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.gamma}.csv")
+    SCOREFILE = os.path.expanduser(f"./train_rewards_{opts.model}_{opts.epsilon}_{opts.num_timesteps}_{opts.alpha}_{opts.k}_{opts.targetted}.csv")
     max_val = 0.
     best_params = []
     for param_ix in range(this_worker, len(PARAM_GRID), N_WORKERS):
@@ -130,7 +150,7 @@ def train(opts):
       r, acc = train_epoch(agents, target_model, train_loader, opts)
       eval_r, eval_loss, eval_acc, *_ = eval(agents, target_model, val_loader, opts.num_timesteps, device, opts)
       with open(SCOREFILE, "a") as f:
-        f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item())))}\n')
+        f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item(), avg_queries)))}\n')
 
   # elif opts.baseline == 'square_attack':
   #   print(test_im.shape)
@@ -184,7 +204,7 @@ def train(opts):
       batch_size=opts.batch_size,
       shuffle=True
     )
-    net = CifarNet(in_channels=3)
+    net = CifarNet(in_channels=3).to(opts.device)
     device = opts.device
     loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
@@ -196,30 +216,32 @@ def train(opts):
         for i, (x, y) in tqdm(enumerate(cifar_loader)):
             x, y = x.to(device), y.to(device)
             optimizer.zero_grad()
-            loss = loss_fn(net(x), y)
+            out = net(x)
+            loss = loss_fn(out, y)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+        print((net(x).argmax(1) == y).sum() / opts.batch_size)    
         print(
           "epoch: {}/{}, train loss: {:.3f}".format(
               epoch, opts.n_epochs, train_loss / (i + 1)
           )
         )
-
-
+    torch.save(net.state_dict(), "cifar_model.pt")
+  
   elif opts.eval_only:
     agents = init_adv_agents(opts, opts.load_paths)
     r, loss, acc, avg_queries, acc_evol, adv_images, orig_images = eval(agents, target_model, test_loader, opts.num_timesteps, device, opts)
     print(r.mean().item())
     print(acc.mean().item())
-    plt.imsave(opts.save_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
-    plt.imsave(opts.save_dir + '/orig_image.png', np.array(orig_images[-1]), cmap='gray')
-    plt.imsave(opts.save_dir + '/adv_image1.png', np.array(adv_images[-2]), cmap='gray')
-    plt.imsave(opts.save_dir + '/orig_image1.png', np.array(orig_images[-2]), cmap='gray')
-    plt.imsave(opts.save_dir + '/adv_image2.png', np.array(adv_images[0]), cmap='gray')
-    plt.imsave(opts.save_dir + '/orig_image2.png', np.array(orig_images[0]), cmap='gray')
-    plt.imsave(opts.save_dir + '/adv_image3.png', np.array(adv_images[50]), cmap='gray')
-    plt.imsave(opts.save_dir + '/orig_image3.png', np.array(orig_images[50]), cmap='gray')
+    plt.imsave(opts.log_dir + '/adv_image.png', np.array(adv_images[-1]), cmap='gray')
+    plt.imsave(opts.log_dir + '/orig_image.png', np.array(orig_images[-1]), cmap='gray')
+    plt.imsave(opts.log_dir + '/adv_image1.png', np.array(adv_images[-2]), cmap='gray')
+    plt.imsave(opts.log_dir + '/orig_image1.png', np.array(orig_images[-2]), cmap='gray')
+    plt.imsave(opts.log_dir + '/adv_image2.png', np.array(adv_images[0]), cmap='gray')
+    plt.imsave(opts.log_dir + '/orig_image2.png', np.array(orig_images[0]), cmap='gray')
+    plt.imsave(opts.log_dir + '/adv_image3.png', np.array(adv_images[50]), cmap='gray')
+    plt.imsave(opts.log_dir + '/orig_image3.png', np.array(orig_images[50]), cmap='gray')
   elif opts.eval_fsgm:
     test_loader.batch_size = 1
     eval_fgsm(opts, target_model, test_loader)
@@ -358,6 +380,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
   loss_fun = carlini_loss
   rewards = []
   acc = []
+  direction = -1 if opts.targetted else 1
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(opts.device))
     y = y.to(opts.device)
@@ -365,7 +388,7 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
       T = y
     else:
       # Randomly sample a target other than true class
-      T = torch.ones(opts.batch_size, 10) / 9
+      T = torch.ones(opts.batch_size, 10, device=opts.device) / 9
       T = T.scatter(1, y[:, None], 0)
       T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
@@ -374,21 +397,19 @@ def train_batch(agents, target_model, train_loader, optimizers, baseline, opts):
     with torch.no_grad():
       out = query_target_model(target_model, env.curr_images, opts)
       out2 = query_target_model(target_model, x, opts)
-      direction = -1 if opts.targetted else 1
       attack_accuracy = direction * (out2.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum() / x.size(0)
-      target_model_loss = loss_fun(out, T)
-      target_model_loss2 = loss_fun(out2, T)
+      target_model_loss = direction * loss_fun(out, T)
+      target_model_loss2 = direction * loss_fun(out2, T)
     # print(f"Target Model Loss: {target_model_loss.mean()}")
-    l2_perturb = 0
-    r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * l2_perturb
+    r = -(target_model_loss - target_model_loss2).squeeze(1) + opts.gamma * env.steps_needed.squeeze(1) / opts.num_timesteps
     # print(torch.softmax(out, dim=1))
     rewards.append(-r.mean().item())
     acc.append(attack_accuracy.item())
     loss = ((r - baseline.eval(r)) * log_p).mean()
     # loss_log.append(loss.item())
     # average_reward.append(-r.mean().item())
-    print(f"Avg Reward : {-r.mean().item()}")
-    print(f"Attack Accuracy : {attack_accuracy.item()}")
+    # print(f"Avg Reward : {-r.mean().item()}")
+    # print(f"Attack Accuracy : {attack_accuracy.item()}")
     for optimizer in optimizers:
       optimizer.zero_grad()
     loss.backward()
@@ -438,6 +459,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
   acc = []
   losses = []
   avg_queries = []
+  direction = -1 if opts.targetted else 1
   avg_acc_evol = 0
   for i, (x, y) in enumerate(tqdm(train_loader)):
     x = x.to(torch.device(device))
@@ -446,7 +468,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
       T = y
     else:
       # Randomly sample a target other than true class
-      T = torch.ones(opts.batch_size, 10) / 9.
+      T = torch.ones(opts.batch_size, 10, device=opts.device) / 9.
       T = T.scatter(1, y[:, None], 0)
       T = T.multinomial(1).squeeze(1)
     env = adv_env(target_model, opts)
@@ -455,11 +477,10 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
         _, acc_evol = env.deploy(agents, x, y, T)
         out = query_target_model(target_model, env.curr_images, opts)
         out1 = query_target_model(target_model, x, opts)
-        direction = -1 if opts.targetted else 1
         attack_accuracy = direction * ((out1.argmax(1) == T).float().sum() - (out.argmax(1) == T).float().sum()) / x.size(0)
     avg_acc_evol += np.asarray(acc_evol)
-    target_model_loss = loss_fun(out, T)
-    target_model_loss1 = loss_fun(out1, T)
+    target_model_loss = direction * loss_fun(out, T)
+    target_model_loss1 = direction * loss_fun(out1, T)
     #print(f"Target Model Loss: {target_model_loss.mean()}")
     l2_perturb = 0
     r = -(target_model_loss - target_model_loss1) + opts.gamma * l2_perturb
