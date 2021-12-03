@@ -11,9 +11,11 @@ class box_agent(nn.Module):
     kernel_size = int(opts.k ** 0.5)
     self.padded_size = int(math.ceil(((opts.d ** 0.5) / kernel_size)) * kernel_size)
     self.padding = int((self.padded_size - (opts.d ** 0.5)) / 2)
-    self.conv1 = nn.Conv2d(2, 10, kernel_size=5)
+    in_channels = 2 if opts.dataset == "mnist" else 6
+    self.conv1 = nn.Conv2d(in_channels, 10, kernel_size=5)
     self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
     # self.conv2_drop = nn.Dropout2d()
+
     self.fc1 = nn.Linear(322, 200)
     self.fc2 = nn.Linear(200, int((self.padded_size ** 2) / opts.k))
 
