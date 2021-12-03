@@ -198,7 +198,9 @@ def get_options(args=None):
     else:
         opts.device = "cpu"
     run_time = time.strftime("%Y%m%dT%H%M%S")
-    opts.run_name = f"{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{opts.num_timesteps}/run_{run_time}"
+
+    targetted_flag = "t" if opts.targetted else "nt"
+    opts.run_name = f"{opts.model}_k={opts.k}_eps={opts.epsilon}_alpha={opts.alpha}_{opts.num_timesteps}_{targetted_flag}/run_{run_time}"
     
     opts.save_dir = os.path.join(opts.output_dir, opts.run_name)
     opts.log_dir = os.path.join(opts.log_dir, opts.run_name)
