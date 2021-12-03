@@ -105,6 +105,6 @@ def query_target_model(target_model, x, opts):
     out = target_model(x)
     return out
   else:
-    out = torch.tensor(target_model.predict(x * 255.)).to(opts.device)
+    out = target_model(x)
     return out
 

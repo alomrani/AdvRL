@@ -1,31 +1,45 @@
 import math
 from unicodedata import decimal
-import torch.nn as nn
 import torch
+<<<<<<< HEAD
 from collections import OrderedDict
 # import tensorflow as tf
 import torch.utils.model_zoo as model_zoo
 import torch.nn.functional as F
+=======
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
+<<<<<<< HEAD
 #import square_attack.utils as utils
 from utils import carlini_loss, clip_grad_norms, init_adv_agents, plot_grad_flow, save_agents_param, query_target_model
 from target_model import Net, CifarNet
+=======
+# import square_attack.utils as utils
+from utils import carlini_loss, init_adv_agents, save_agents_param, query_target_model
+from target_model import Net, CifarNet, CifarNet2
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 from env import adv_env
 from reinforce_baseline import ExponentialBaseline
 from options import get_options
 from torchvision import datasets, transforms
 import os
 from itertools import product
+<<<<<<< HEAD
 #from square_attack import models
 #from square_attack.attack import square_attack_linf as square_attack
+=======
+# from square_attack import models
+# from square_attack.attack import square_attack_linf as square_attack
+>>>>>>> dabf6a2b81cbbeaa3a4405713122eb3a7f52590d
 import json
 import seaborn as sns
 import pandas as pd
+
 
 def train(opts):
   torch.manual_seed(opts.seed)
@@ -37,7 +51,8 @@ def train(opts):
         json.dump(vars(opts), f, indent=True)
   if not os.path.exists(opts.log_dir):
     os.makedirs(opts.log_dir)
-  pretrained_model = "./target_model_param/lenet_mnist_model.pth"
+  pretrained_model_mnist = "./target_model_param/lenet_mnist_model.pth"
+  pretrained_model_cifar = "./target_model_param/cifar_model.pth"
   batch_size = opts.batch_size
   device = opts.device
   agents = init_adv_agents(opts)
@@ -83,22 +98,31 @@ def train(opts):
     num_classes = 10
 
   if opts.baseline == 'square_attack':
-    if opts.dataset == 'mnist':
-      sq_model = models.ModelTF('clp_mnist', batch_size, 0.5)
-    elif opts.dataset == 'cifar10':
-      sq_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
+    # if opts.dataset == 'mnist':
+    #   sq_model = models.ModelTF('clp_mnist', batch_size, 0.5)
+    # elif opts.dataset == 'cifar10':
+    #   sq_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
+    pass
   else:
     if opts.dataset == 'mnist':
       # Initialize the network
       target_model = Net().to(device)
 
       # Load the pretrained model
-      target_model.load_state_dict(torch.load(pretrained_model, map_location=device))
+      target_model.load_state_dict(torch.load(pretrained_model_mnist, map_location=device))
 
       # Set the model in evaluation mode. In this case this is for the Dropout layers
       target_model.eval()
-    #else:
-    #  target_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
+    else:
+      # target_model = models.ModelTF('clp_cifar10', batch_size, 0.5)
+      target_model = CifarNet2().to(opts.device)
+
+      # Load the pretrained model
+      target_model.load_state_dict(torch.load(pretrained_model_cifar, map_location=device))
+
+      # Set the model in evaluation mode. In this case this is for the Dropout layers
+      target_model.eval()
+      # target_model = get_model("cifar_resnet20_v1", classes=10, pretrained=True)
 
   if opts.tune:
     PARAM_GRID = list(product(
@@ -128,25 +152,25 @@ def train(opts):
       with open(SCOREFILE, "a") as f:
         f.write(f'{",".join(map(str, params + (eval_r.mean().item(), eval_loss.mean().item(), eval_acc.mean().item(), avg_queries)))}\n')
 
-  elif opts.baseline == 'square_attack':
-    print(test_im.shape)
-    logits_clean = sq_model.predict(test_im)
-    # print(logits_clean)
+  # elif opts.baseline == 'square_attack':
+  #   print(test_im.shape)
+  #   logits_clean = sq_model.predict(test_im)
+  #   # print(logits_clean)
     
-    # test_labels = np.reshape(test_labels,(100,))
-    # print(test_labels)
-    corr_classified = logits_clean.argmax(1) == test_labels.numpy()
+  #   # test_labels = np.reshape(test_labels,(100,))
+  #   # print(test_labels)
+  #   corr_classified = logits_clean.argmax(1) == test_labels.numpy()
 
-    # corr_classified = torch.from_numpy(corr_classified)
-    # print(test_labels)
-    # print(corr_classified)
-    y_target = utils.random_classes_except_current(test_labels, num_classes) if opts.targetted else test_labels
-    test_labels_onehot = utils.dense_to_onehot(y_target, num_classes)
+  #   # corr_classified = torch.from_numpy(corr_classified)
+  #   # print(test_labels)
+  #   # print(corr_classified)
+  #   y_target = utils.random_classes_except_current(test_labels, num_classes) if opts.targetted else test_labels
+  #   test_labels_onehot = utils.dense_to_onehot(y_target, num_classes)
 
-    #test_labels_onehot = torch.from_numpy(test_labels_onehot)
-    print(test_im.dtype)
-    n_queries, x_adv = square_attack(sq_model, test_im.numpy(), test_labels_onehot, corr_classified, opts.epsilon, opts.n_epochs,
-                                     0.05, False, 'cross_entropy')
+  #   #test_labels_onehot = torch.from_numpy(test_labels_onehot)
+  #   print(test_im.dtype)
+  #   n_queries, x_adv = square_attack(sq_model, test_im.numpy(), test_labels_onehot, corr_classified, opts.epsilon, opts.n_epochs,
+  #                                    0.05, False, 'cross_entropy')
 
   elif not (opts.eval_only or opts.eval_fsgm or opts.eval_plots or opts.train_cifar_model):
     r, acc = train_epoch(agents, target_model, train_loader, opts)
@@ -467,7 +491,7 @@ def eval(agents, target_model, train_loader, time_horizon, device, opts):
     acc.append(attack_accuracy.item())
     losses.append(target_model_loss.mean().item())
     avg_queries.append((env.steps_needed * (env.steps_needed != time_horizon).float() * (env.steps_needed != 0).float()).sum() / ((env.steps_needed != time_horizon).float() * (env.steps_needed != 0).float()).sum())
-    # print(f"Attack Accuracy: {attack_accuracy}")
+    print(f"Attack Accuracy: {attack_accuracy}")
   return torch.tensor(rewards), torch.tensor(losses), torch.tensor(acc), torch.tensor(avg_queries), avg_acc_evol / (i + 1), env.curr_images, x
 
 
