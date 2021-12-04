@@ -22,7 +22,6 @@ import json
 import seaborn as sns
 import pandas as pd
 
-
 def train(opts):
   torch.manual_seed(opts.seed)
   # np.random.seed(opts.seed)
@@ -104,6 +103,7 @@ def train(opts):
 
       # Set the model in evaluation mode. In this case this is for the Dropout layers
       target_model.eval()
+      # target_model = load_model("Standard", norm='Linf')
       # target_model = get_model("cifar_resnet20_v1", classes=10, pretrained=True)
 
   if opts.tune:

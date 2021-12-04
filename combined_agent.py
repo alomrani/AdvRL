@@ -8,9 +8,10 @@ import torch.nn.functional as F
 class box_agent(nn.Module):
   def __init__(self, opts):
     super(box_agent, self).__init__()
-    kernel_size = int(opts.k ** 0.5)
-    self.padded_size = int(math.ceil(((opts.d ** 0.5) / kernel_size)) * kernel_size)
-    self.padding = int((self.padded_size - (opts.d ** 0.5)) / 2)
+    h = int(opts.d ** 0.5)
+    size_pad = {(32, 9): 2, (32, 4): 0, (28, 4): 0, (28, 9): 1}
+    self.padding = size_pad[(h, opts.k)]
+    self.padded_size = h + 2 * self.padding
     in_channels = 2 if opts.dataset == "mnist" else 6
     self.conv1 = nn.Conv2d(in_channels, 10, kernel_size=5)
     self.conv2 = nn.Conv2d(10, 20, kernel_size=5)

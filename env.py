@@ -11,9 +11,10 @@ class adv_env():
   def __init__(self, target_model, opts):
     self.images = None
     self.curr_images = None
-    kernel_size = int(opts.k ** 0.5)
-    self.padded_size = int(math.ceil(((opts.d ** 0.5) / kernel_size)) * kernel_size)
-    self.padding = int((self.padded_size - (opts.d ** 0.5)) / 2)
+    h = int(opts.d ** 0.5)
+    size_pad = {(32, 9): 2, (32, 4): 0, (28, 4): 0, (28, 9): 1}
+    self.padding = size_pad[(h, opts.k)]
+    self.padded_size = h + 2 * self.padding
     self.mask = torch.zeros(opts.batch_size, int((self.padded_size ** 2) / opts.k), device=opts.device)
     self.steps_needed = torch.zeros(opts.batch_size, 1, device=opts.device)
     self.epsilon = opts.epsilon
@@ -96,11 +97,12 @@ class adv_env():
       kernel_size = int(self.opts.k ** 0.5)
       l_p = torch.log_softmax(logits, dim=1)
       selected_block = self.sample(l_p.exp())
-      selected_mask = F.unfold(torch.zeros(self.images.shape, device=self.device), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
+      h = int(self.d ** 0.5)
+      selected_mask = F.unfold(torch.zeros((self.opts.batch_size, 1, h, h), device=self.device), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
+      print(selected_mask.shape)
       selected_mask = selected_mask.scatter(1, selected_block[:, :, None].repeat(1, 1, kernel_size ** 2), 1)
-      selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=self.padded_size, padding=self.padding)
-      if self.padding != 0:
-        selected_mask = selected_mask[:, :, self.padding:-self.padding, self.padding:-self.padding]
+      selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=h, padding=self.padding)
+
       return selected_block, selected_mask, l_p.gather(1, selected_block).squeeze(1)
     else:
       l_p = torch.log_softmax(logits, dim=1)
