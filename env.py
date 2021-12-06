@@ -50,7 +50,8 @@ class adv_env():
     # clip_mask = torch.ones((self.curr_images.size(1), self.curr_images.size(2)), device=self.device)
     # self.curr_images = torch.clip(self.curr_images, min=(self.images - clip_mask * self.epsilon), max=(self.images + clip_mask * self.epsilon))
     self.curr_images = torch.clip(self.curr_images, min=0., max=1.)
-    self.steps_needed += (direction * carlini_loss(query_target_model(self.target_model, self.curr_images, self.opts), T) < 0).float()
+    self.curr_loss_est = carlini_loss(query_target_model(self.target_model, self.curr_images, self.opts), T)
+    self.steps_needed += (direction * self.curr_loss_est < 0).float()
     return 0
 
   def deploy(self, agents, images, true_targets, target_classes=None):
@@ -70,10 +71,10 @@ class adv_env():
       selected_pixels, selected_mask, lp_pixel, grad_est, lp_grad_est = self.call_agents(agents, i)
       self.update(selected_pixels, selected_mask, grad_estimate=grad_est)
       log += lp_pixel
-      avg_acc_evolution.append((direction * self.curr_loss_est < 0).float().mean().item())
+      avg_acc_evolution.append((direction * self.curr_loss_est > 0).float().mean().item())
       # r_t.append(r)
       self.timestep += 1
-    print((self.steps_needed * (self.steps_needed != self.time_horizon) * (self.steps_needed != 0)).sum() / ((self.steps_needed != self.time_horizon) * (self.steps_needed != self.time_horizon)).sum())
+    #print((self.steps_needed * (self.steps_needed != self.time_horizon) * (self.steps_needed != 0)).sum() / ((self.steps_needed != self.time_horizon) * (self.steps_needed != self.time_horizon)).sum())
     return log, avg_acc_evolution
 
   def call_agents(self, agents, timestep):
@@ -99,7 +100,6 @@ class adv_env():
       selected_block = self.sample(l_p.exp())
       h = int(self.d ** 0.5)
       selected_mask = F.unfold(torch.zeros((self.opts.batch_size, 1, h, h), device=self.device), kernel_size=kernel_size, stride=kernel_size, padding=self.padding).transpose(1, 2)
-      print(selected_mask.shape)
       selected_mask = selected_mask.scatter(1, selected_block[:, :, None].repeat(1, 1, kernel_size ** 2), 1)
       selected_mask = F.fold(selected_mask.transpose(1, 2), kernel_size=kernel_size, stride=kernel_size, output_size=h, padding=self.padding)
 

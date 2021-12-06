@@ -8,8 +8,9 @@ from torch.nn import DataParallel
 from square_attack.madry_mnist.model import Model as madry_model_mnist
 from square_attack.madry_cifar10.model import Model as madry_model_cifar10
 from square_attack.logit_pairing.models import LeNet as lp_model_mnist, ResNet20_v2 as lp_model_cifar10
-from square_attack.post_avg.postAveragedModels import pa_resnet110_config1 as post_avg_cifar10_resnet
-from square_attack.post_avg.postAveragedModels import pa_resnet152_config1 as post_avg_imagenet_resnet
+import time
+# from square_attack.post_avg.postAveragedModels import pa_resnet110_config1 as post_avg_cifar10_resnet
+# from square_attack.post_avg.postAveragedModels import pa_resnet152_config1 as post_avg_imagenet_resnet
 
 
 class Model:
@@ -67,7 +68,6 @@ class ModelTF(Model):
             x = np.reshape(x, [-1, *shape])
         elif 'cifar10' in self.model_name:
             x = np.transpose(x, axes=[0, 2, 3, 1])
-
         n_batches = math.ceil(x.shape[0] / self.batch_size)
         logits_list = []
         for i in range(n_batches):
@@ -131,7 +131,7 @@ model_path_dict = {'madry_mnist_robust': 'madry_mnist/models/robust',
                    'madry_cifar10_robust': 'madry_cifar10/models/robust',
                    'clp_mnist': '/content/gdrive/MyDrive/AdvRL/square_attack/logit_pairing/models/clp_mnist',
                    'lsq_mnist': 'logit_pairing/models/lsq_mnist',
-                   'clp_cifar10': 'logit_pairing/models/clp_cifar10',
+                   'clp_cifar10': 'square_attack/logit_pairing/models/clp_cifar10',
                    'lsq_cifar10': 'logit_pairing/models/lsq_cifar10',
                    'pt_post_avg_cifar10': 'post_avg/trainedModel/resnet110.th'
                    }
@@ -145,8 +145,6 @@ model_class_dict = {'pt_vgg': torch_models.vgg16_bn,
                     'lsq_mnist': lp_model_mnist,
                     'clp_cifar10': lp_model_cifar10,
                     'lsq_cifar10': lp_model_cifar10,
-                    'pt_post_avg_cifar10': post_avg_cifar10_resnet,
-                    'pt_post_avg_imagenet': post_avg_imagenet_resnet,
                     }
 all_model_names = list(model_class_dict.keys())
 

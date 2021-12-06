@@ -40,6 +40,10 @@ def carlini_loss(output, targets):
   loss = logit_loss1[:, None] - logit_loss
   return loss
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+    return e_x / e_x.sum(axis=1, keepdims=True)
+
 
 
 def clip_grad_norms(param_groups, max_norm=math.inf):

@@ -1,5 +1,9 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from utils import softmax
+import numpy as np
+
 
 class Net(nn.Module):
     def __init__(self):
@@ -18,6 +22,26 @@ class Net(nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return x
+
+    def predict(self, x):
+        with torch.no_grad():
+            return self.forward(torch.tensor(x).float()).cpu().numpy()
+    
+    def loss(self, y, logits, targeted=False, loss_type='margin_loss'):
+        """ Implements the margin loss (difference between the correct and 2nd best class). """
+        if loss_type == 'margin_loss':
+            preds_correct_class = (logits * y).sum(1, keepdims=True)
+            diff = preds_correct_class - logits  # difference between the correct class and all other classes
+            diff[y] = np.inf  # to exclude zeros coming from f_correct - f_correct
+            margin = diff.min(1, keepdims=True)
+            loss = margin * -1 if targeted else margin
+        elif loss_type == 'cross_entropy':
+            probs = softmax(logits)
+            loss = -np.log(probs[y])
+            loss = loss * -1 if not targeted else loss
+        else:
+            raise ValueError('Wrong loss.')
+        return loss.flatten()
 
 
 
@@ -88,3 +112,23 @@ class CifarNet2(nn.Module):
         out = out.view(-1,10)
 
         return out
+
+    def predict(self, x):
+        with torch.no_grad():
+            return self.forward(torch.tensor(x).float()).cpu().numpy()
+    
+    def loss(self, y, logits, targeted=False, loss_type='margin_loss'):
+        """ Implements the margin loss (difference between the correct and 2nd best class). """
+        if loss_type == 'margin_loss':
+            preds_correct_class = (logits * y).sum(1, keepdims=True)
+            diff = preds_correct_class - logits  # difference between the correct class and all other classes
+            diff[y] = np.inf  # to exclude zeros coming from f_correct - f_correct
+            margin = diff.min(1, keepdims=True)
+            loss = margin * -1 if targeted else margin
+        elif loss_type == 'cross_entropy':
+            probs = softmax(logits)
+            loss = -np.log(probs[y])
+            loss = loss * -1 if not targeted else loss
+        else:
+            raise ValueError('Wrong loss.')
+        return loss.flatten()

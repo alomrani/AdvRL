@@ -1,6 +1,7 @@
 import argparse
 import time
 import numpy as np
+from numpy.core.fromnumeric import mean
 import square_attack.data
 import square_attack.models
 import os
@@ -204,7 +205,6 @@ def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, targe
     n_features = c*h*w
     n_ex_total = x.shape[0]
     x, y = x[corr_classified], y[corr_classified]
-
     # [c, 1, w], i.e. vertical stripes work best for untargeted attacks
     init_delta = np.random.choice([-eps, eps], size=[x.shape[0], c, 1, w])
     x_best = np.clip(x + init_delta, min_val, max_val)
@@ -214,7 +214,7 @@ def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, targe
     n_queries = np.ones(x.shape[0])  # ones because we have already used 1 query
 
     time_start = time.time()
-    metrics = np.zeros([n_iters, 7])
+    acc_evol = []
     for i_iter in range(n_iters - 1):
         idx_to_fool = margin_min > 0
         x_curr, x_best_curr, y_curr = x[idx_to_fool], x_best[idx_to_fool], y[idx_to_fool]
@@ -252,16 +252,17 @@ def square_attack_linf(model, x, y, corr_classified, eps, n_iters, p_init, targe
         mean_nq, mean_nq_ae, median_nq_ae = np.mean(n_queries), np.mean(n_queries[margin_min <= 0]), np.median(n_queries[margin_min <= 0])
         avg_margin_min = np.mean(margin_min)
         time_total = time.time() - time_start
-        print('{}: acc={:.2%} acc_corr={:.2%} avg#q_ae={:.2f} med#q={:.1f}, avg_margin={:.2f} (n_ex={}, eps={:.3f}, {:.2f}s)'.
-            format(i_iter+1, acc, acc_corr, mean_nq_ae, median_nq_ae, avg_margin_min, x.shape[0], eps, time_total))
+        # print('{}: acc={:.2%} acc_corr={:.2%} avg#q_ae={:.2f} med#q={:.1f}, avg_margin={:.2f} (n_ex={}, eps={:.3f}, {:.2f}s)'.
+        #     format(i_iter+1, acc, acc_corr, mean_nq_ae, median_nq_ae, avg_margin_min, x.shape[0], eps, time_total))
 
         # metrics[i_iter] = [acc, acc_corr, mean_nq, mean_nq_ae, median_nq_ae, margin_min.mean(), time_total]
         # if (i_iter <= 500 and i_iter % 20 == 0) or (i_iter > 100 and i_iter % 50 == 0) or i_iter + 1 == n_iters or acc == 0:
         #     np.save(metrics_path, metrics)
-        if acc == 0:
-            break
+        # if acc == 0:
+        #     break
+        acc_evol.append(acc)
 
-    return n_queries, x_best
+    return mean_nq_ae, x_best, acc_evol
 
 
 if __name__ == '__main__':
